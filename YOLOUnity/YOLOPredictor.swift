@@ -5,6 +5,7 @@ import UIKit
 
 // YOLOPredictor Class
 class YOLOPredictor {
+    let model: MLModel
     let detector: VNCoreMLModel
     
     lazy var visionRequest: VNCoreMLRequest = {
@@ -48,6 +49,10 @@ class YOLOPredictor {
             print("Error: Failed to initialize the detector.")
             return nil
         }
+        
+        print(model.modelDescription.inputDescriptionsByName)
+        
+        self.model = model
         self.detector = detector
         self.detector.featureProvider = ThresholdProvider()
         
@@ -76,6 +81,7 @@ class YOLOPredictor {
     func predict(cgImage: CGImage) {
         let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
         do {
+            
             try handler.perform([visionRequest])
         } catch {
             print("Prediction failed: \(error.localizedDescription)")

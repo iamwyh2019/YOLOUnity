@@ -1,64 +1,104 @@
 import Foundation
 import Vision
+import UniformTypeIdentifiers
 
-func convertFloatArrayToCGImage(data: UnsafePointer<Float>, width: Int, height: Int) -> CGImage? {
-    let bitsPerComponent = 8
-    let bitsPerPixel = 32 // 4 channels (RGBA) * 8 bits
-    let bytesPerRow = width * 4 // 4 bytes per pixel (RGBA)
-    let colorSpace = CGColorSpaceCreateDeviceRGB()
-    let bitmapInfo = CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedLast.rawValue)
-
-    // Allocate a buffer for RGBA UInt8 data
-    let buffer = UnsafeMutablePointer<UInt8>.allocate(capacity: width * height * 4)
+func floatArrayToCGImage(data: UnsafePointer<Float>, width: Int, height: Int) -> CGImage? {
+    let bytesPerPixel = 4
+    let byteCount = width * height * bytesPerPixel
+    let buffer = UnsafeMutablePointer<UInt8>.allocate(capacity: byteCount)
+    let retainedBuffer = UnsafeMutablePointer<UInt8>.allocate(capacity: byteCount)
     defer { buffer.deallocate() }
-
-    // Convert float data (normalized [0.0, 1.0]) to UInt8 (0-255)
-    for i in 0..<(width * height) {
-        let r = UInt8(max(0, min(255, data[i * 4 + 0] * 255.0)))
-        let g = UInt8(max(0, min(255, data[i * 4 + 1] * 255.0)))
-        let b = UInt8(max(0, min(255, data[i * 4 + 2] * 255.0)))
-        let a = UInt8(max(0, min(255, data[i * 4 + 3] * 255.0))) // Alpha channel
-
-        buffer[i * 4 + 0] = r
-        buffer[i * 4 + 1] = g
-        buffer[i * 4 + 2] = b
-        buffer[i * 4 + 3] = a
+    
+    DispatchQueue.concurrentPerform(iterations: height) { y in
+        let rowStart = y * width
+        for x in 0..<width {
+            let i = rowStart + x
+            let baseIndex = i * 4
+            buffer[baseIndex + 0] = UInt8(max(0, min(255, data[baseIndex + 0] * 255.0)))
+            buffer[baseIndex + 1] = UInt8(max(0, min(255, data[baseIndex + 1] * 255.0)))
+            buffer[baseIndex + 2] = UInt8(max(0, min(255, data[baseIndex + 2] * 255.0)))
+            buffer[baseIndex + 3] = UInt8(max(0, min(255, data[baseIndex + 3] * 255.0)))
+        }
     }
-
-    // Create a CGImage from the buffer
-    let provider = CGDataProvider(dataInfo: nil, data: buffer, size: width * height * 4, releaseData: { _, _, _ in })!
-    return CGImage(width: width,
-                   height: height,
-                   bitsPerComponent: bitsPerComponent,
-                   bitsPerPixel: bitsPerPixel,
-                   bytesPerRow: bytesPerRow,
-                   space: colorSpace,
-                   bitmapInfo: bitmapInfo,
-                   provider: provider,
-                   decode: nil,
-                   shouldInterpolate: true,
-                   intent: .defaultIntent)
+    
+    memcpy(retainedBuffer, buffer, byteCount)
+    
+    let colorSpace = CGColorSpace(name: CGColorSpace.sRGB)!
+    let bitmapInfo = CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedLast.rawValue)
+    
+    guard let provider = CGDataProvider(dataInfo: nil, data: retainedBuffer, size: byteCount, releaseData: { _, ptr, _ in
+        let bufferPtr = ptr.assumingMemoryBound(to: UInt8.self)
+        bufferPtr.deallocate()
+    }) else {
+        retainedBuffer.deallocate()
+        return nil
+    }
+    
+    return CGImage(width: width, height: height,
+                  bitsPerComponent: 8, bitsPerPixel: bytesPerPixel * 8,
+                  bytesPerRow: width * bytesPerPixel,
+                  space: colorSpace, bitmapInfo: bitmapInfo,
+                  provider: provider, decode: nil,
+                  shouldInterpolate: false, intent: .defaultIntent)
 }
 
 
 func cgImageToFloatArray(_ image: CGImage, width: Int, height: Int) -> [Float]? {
-    // Create a raw RGBA buffer
     let bytesPerPixel = 4 // RGBA
     let byteCount = width * height * bytesPerPixel
     var rawData = [UInt8](repeating: 0, count: byteCount)
 
-    let colorSpace = CGColorSpaceCreateDeviceRGB()
-    let context = CGContext(data: &rawData,
-                            width: width,
-                            height: height,
-                            bitsPerComponent: 8,
-                            bytesPerRow: width * bytesPerPixel,
-                            space: colorSpace,
-                            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+    let colorSpace = CGColorSpace(name: CGColorSpace.sRGB)!
+    let bitmapInfo: CGBitmapInfo = [
+        .byteOrder32Big, // Ensure proper byte order
+        CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedLast.rawValue)
+    ]
+
+    guard let context = CGContext(data: &rawData,
+                                  width: width,
+                                  height: height,
+                                  bitsPerComponent: 8,
+                                  bytesPerRow: width * bytesPerPixel,
+                                  space: colorSpace,
+                                  bitmapInfo: bitmapInfo.rawValue) else {
+        print("Error: Failed to create CGContext.")
+        return nil
+    }
 
     // Draw the image into the context
-    context?.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+    context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+
+    // Debug: Verify raw data size
+    if rawData.count != byteCount {
+        print("Error: Mismatched raw data size. Expected \(byteCount), got \(rawData.count).")
+        return nil
+    }
 
     // Normalize the data to float [0.0, 1.0]
     return rawData.map { Float($0) / 255.0 }
 }
+
+
+
+func saveCGImageToDisk(cgImage: CGImage, filename: String) {
+    // Create a retained copy of the CGImage
+    guard let imageCopy = cgImage.copy() else {
+        print("Error: Failed to copy CGImage")
+        return
+    }
+
+    let url = FileManager.default.temporaryDirectory.appendingPathComponent(filename)
+
+    guard let destination = CGImageDestinationCreateWithURL(url as CFURL, UTType.png.identifier as CFString, 1, nil) else {
+        print("Error: Failed to create image destination.")
+        return
+    }
+
+    CGImageDestinationAddImage(destination, imageCopy, nil)
+    if CGImageDestinationFinalize(destination) {
+        print("Image successfully saved to \(url.path)")
+    } else {
+        print("Error: Failed to save image to disk.")
+    }
+}
+

@@ -36,11 +36,19 @@ public func RunYOLO(imageData: UnsafePointer<Float>, width: Int, height: Int, ch
         print("Error: YOLOPredictor not initialized.")
         return
     }
-
-    guard let cgImage = convertFloatArrayToCGImage(data: imageData, width: width, height: height) else {
+    
+    guard let cgImage = floatArrayToCGImage(data: imageData, width: width, height: height) else {
         print("Error: Failed to convert image data.")
         return
     }
+    predictor.predict(cgImage: cgImage)
+}
 
+public func RunYOLO(cgImage: CGImage) {
+    guard let predictor = predictor else {
+        print("Error: YOLOPredictor not initialized.")
+        return
+    }
+    
     predictor.predict(cgImage: cgImage)
 }
