@@ -123,6 +123,8 @@ class YOLOPredictor {
             
             let numMasks = masks.shape[1].intValue
             let numClasses = boxes.shape[1].intValue - 4 - numMasks
+            let maskWidth = masks.shape[2].intValue
+            let maskHeight = masks.shape[3].intValue
             
             let boxPredictions: [BoxPrediction] = parseBoundingBoxes(
                 multiArray: boxes,
@@ -148,12 +150,36 @@ class YOLOPredictor {
                         limit: 100))
             }
             
-            for box in nmsPredictions {
-                print("classIndex: \(box.classIndex), score: \(box.score)")
-            }
-            
             let maskProtos: [[Float]] = getMaskProtos(masks: masks, numMasks: numMasks)
             
+            for (i,box) in nmsPredictions.enumerated() {
+                print("box: \(box.xyxy)")
+                
+                let mask = getMasksFromProtos(
+                    maskProtos: maskProtos,
+                    coefficients: box.maskCoefficients
+                )
+                let sigmoidMask = getSigmoidMask(mask: mask)
+                let upsampledMask = upsampleMask(
+                    mask: sigmoidMask,
+                    width: maskWidth,
+                    height: maskHeight,
+                    newWidth: 640,
+                    newHeight: 640
+                )
+                let croppedMask = cropMask(
+                    mask: upsampledMask,
+                    width: 640,
+                    height: 640,
+                    bbox: box.xyxy
+                )
+                
+                let filename: String = "\(i)_\(box.classIndex)_mask.png"
+                
+                let exportPath = saveGrayscaleImage(mask: upsampledMask, width: 640, height: 640, filename: filename)
+                
+                print("Exported to \(exportPath)")
+            }
         }
     }
 

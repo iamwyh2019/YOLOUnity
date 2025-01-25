@@ -1,6 +1,8 @@
 import Foundation
 import Vision
 import UniformTypeIdentifiers
+import Accelerate
+import UIKit
 
 func floatArrayToCGImage(data: UnsafePointer<Float>, width: Int, height: Int) -> CGImage? {
     let bytesPerPixel = 4
@@ -131,3 +133,36 @@ func saveCGImageToDisk(cgImage: CGImage, filename: String) {
     }
 }
 
+
+func saveGrayscaleImage(mask: [Float], width: Int, height: Int, filename: String) -> String {
+    let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+    let fullPath = documentsPath.appendingPathComponent(filename).path
+    
+    let colorSpace = CGColorSpaceCreateDeviceGray()
+    let bitmapInfo = CGBitmapInfo(rawValue: CGImageAlphaInfo.none.rawValue)
+    
+    let context = CGContext(
+        data: nil,
+        width: width,
+        height: height,
+        bitsPerComponent: 8,
+        bytesPerRow: width,
+        space: colorSpace,
+        bitmapInfo: bitmapInfo.rawValue
+    )!
+    
+    var clipped = Array(repeating: Float(0), count: mask.count)
+    vDSP_vclip(mask, 1, [0], [1], &clipped, 1, vDSP_Length(mask.count))
+    
+    var scaled = Array(repeating: Float(0), count: mask.count)
+    vDSP_vsmul(clipped, 1, [255], &scaled, 1, vDSP_Length(mask.count))
+    
+    let byteArray = scaled.map { UInt8($0) }
+    context.data?.copyMemory(from: byteArray, byteCount: width * height)
+    
+    let image = context.makeImage()!
+    let uiImage = UIImage(cgImage: image)
+    let data = uiImage.pngData()!
+    try! data.write(to: URL(fileURLWithPath: fullPath))
+    return fullPath
+}

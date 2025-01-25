@@ -4,7 +4,7 @@ import UIKit
 
 class YOLOUnityTests: XCTestCase {
     func testFramework() {
-        guard InitializeYOLO(modelName: "yolo11x_seg", confidenceThreshold: 0.5,
+        guard InitializeYOLO(modelName: "yolo11l_seg", confidenceThreshold: 0.5,
                              iouThreshold: 0.5, scaleMethod: "scaleFit") else {
             print("Failed to initialize YOLO model.")
             return
@@ -34,35 +34,8 @@ class YOLOUnityTests: XCTestCase {
             print("Result 1: \(array1)")
             print("Result 2: \(array2)")
         }
-        
-        let iterations = 30
-        var totalTime = 0.0
-        var cgImageTime = 0.0
-        var predictionTime = 0.0
 
         floatArray.withUnsafeBufferPointer { buffer in
-//            for i in 1...iterations {
-//                let startTime = CFAbsoluteTimeGetCurrent()
-//                
-//                let t1 = CFAbsoluteTimeGetCurrent()
-////                guard let cgImage = floatArrayToCGImage(data: buffer.baseAddress!, width: width, height: height) else { return }
-//                guard let cvPixelBuffer = floatArrayToCVPixelBuffer(data: buffer.baseAddress!, width: width, height: height) else { return }
-//                cgImageTime += CFAbsoluteTimeGetCurrent() - t1
-//                
-//                let t3 = CFAbsoluteTimeGetCurrent()
-//                predictor!.predict(cvPixelBuffer: cvPixelBuffer)
-//                predictionTime += CFAbsoluteTimeGetCurrent() - t3
-//                
-//                let timeElapsed = CFAbsoluteTimeGetCurrent() - startTime
-//                totalTime += timeElapsed
-//                print(String(format: "Run %d: %.3fs (%.1f FPS)", i, timeElapsed, 1.0/timeElapsed))
-//            }
-//            
-//            let avgTime = totalTime / Double(iterations)
-//            print(String(format: "\nBreakdown (avg):\nTotal: %.3fs (%.1f FPS)\nCGImage: %.3fs\nPredict: %.3fs",
-//                         avgTime, 1.0/avgTime,
-//                         cgImageTime/Double(iterations),
-//                         predictionTime/Double(iterations)))
             guard let cgImage = floatArrayToCGImage(data: buffer.baseAddress!, width: width, height: height) else { return }
             predictor!.predict(cgImage: cgImage)
         }
