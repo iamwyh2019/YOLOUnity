@@ -7,6 +7,8 @@ import UIKit
 class YOLOPredictor {
     let model: MLModel
     let detector: VNCoreMLModel
+    let confidenceThreshold: Float
+    let iouThreshold: Float
     
     lazy var visionRequest: VNCoreMLRequest = {
         let request = VNCoreMLRequest(
@@ -20,7 +22,12 @@ class YOLOPredictor {
         return request
     }()
 
-    init?(modelName: String, scaleMethod: String = "scaleFill") {
+    init?(
+        modelName: String,
+        confidanceThreshold: Float = 0.5,
+        iouThreshold: Float = 0.5,
+        scaleMethod: String = "scaleFill"
+    ) {
         // Initialize the Core ML model
         let config = MLModelConfiguration()
         config.computeUnits = .cpuAndNeuralEngine // save GPU for rendering
@@ -55,6 +62,8 @@ class YOLOPredictor {
         self.model = model
         self.detector = detector
         self.detector.featureProvider = ThresholdProvider()
+        self.confidenceThreshold = confidanceThreshold
+        self.iouThreshold = iouThreshold
         
         let request = VNCoreMLRequest(
             model: detector,
@@ -81,7 +90,15 @@ class YOLOPredictor {
     func predict(cgImage: CGImage) {
         let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
         do {
-            
+            try handler.perform([visionRequest])
+        } catch {
+            print("Prediction failed: \(error.localizedDescription)")
+        }
+    }
+    
+    func predict(cvPixelBuffer: CVPixelBuffer) {
+        let handler = VNImageRequestHandler(cvPixelBuffer: cvPixelBuffer, options: [:])
+        do {
             try handler.perform([visionRequest])
         } catch {
             print("Prediction failed: \(error.localizedDescription)")
@@ -101,20 +118,41 @@ class YOLOPredictor {
                 return
             }
             
-            // Iterate through the results and print details
-//            print("Number of observations: \(results.count)")
-//            for (index, observation) in results.enumerated() {
-//                if let multiArray = observation.featureValue.multiArrayValue {
-//                    let shape = multiArray.shape.map { $0.intValue }
-//                    let dataType = multiArray.dataType
-//                    print("Observation \(index):")
-//                    print("  Shape: \(shape)")
-//                    print("  Data type: \(dataType)")
-//                    print("  Total elements: \(multiArray.count)")
-//                } else {
-//                    print("Observation \(index): Feature value is not a multi-array.")
-//                }
-//            }
+            let boxes: MLMultiArray = results[0].featureValue.multiArrayValue!
+            let masks: MLMultiArray = results[1].featureValue.multiArrayValue!
+            
+            let numMasks = masks.shape[1].intValue
+            let numClasses = boxes.shape[1].intValue - 4 - numMasks
+            
+            let boxPredictions: [BoxPrediction] = parseBoundingBoxes(
+                multiArray: boxes,
+                numClasses: numClasses,
+                confidenceThreshold: self.confidenceThreshold
+            )
+            
+            guard !boxPredictions.isEmpty else {
+                return
+            }
+            
+            // apply NMS
+            let groupedPredictions = Dictionary(grouping: boxPredictions) { prediction in
+                prediction.classIndex
+            }
+            
+            var nmsPredictions: [BoxPrediction] = []
+            let _ = groupedPredictions.mapValues { predictions in
+                nmsPredictions.append(
+                    contentsOf: nonMaximumSuppression(
+                        predictions: predictions,
+                        iouThreshold: self.iouThreshold,
+                        limit: 100))
+            }
+            
+            for box in nmsPredictions {
+                print("classIndex: \(box.classIndex), score: \(box.score)")
+            }
+            
+            let maskProtos: [[Float]] = getMaskProtos(masks: masks, numMasks: numMasks)
             
         }
     }

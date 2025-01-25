@@ -79,6 +79,35 @@ func cgImageToFloatArray(_ image: CGImage, width: Int, height: Int) -> [Float]? 
 }
 
 
+func floatArrayToCVPixelBuffer(data: UnsafePointer<Float>, width: Int, height: Int) -> CVPixelBuffer? {
+   var pixelBuffer: CVPixelBuffer?
+   CVPixelBufferCreate(kCFAllocatorDefault, width, height, kCVPixelFormatType_32BGRA, nil, &pixelBuffer)
+   
+   guard let buffer = pixelBuffer else { return nil }
+   
+   CVPixelBufferLockBaseAddress(buffer, .init(rawValue: 0))
+   defer { CVPixelBufferUnlockBaseAddress(buffer, .init(rawValue: 0)) }
+   
+   let baseAddress = CVPixelBufferGetBaseAddress(buffer)!
+   let bytesPerRow = CVPixelBufferGetBytesPerRow(buffer)
+   
+   DispatchQueue.concurrentPerform(iterations: height) { y in
+       let uint8Buffer = baseAddress.assumingMemoryBound(to: UInt8.self)
+       for x in 0..<width {
+           let sourceIndex = (y * width + x) * 4
+           let destIndex = y * bytesPerRow + x * 4
+           
+           uint8Buffer[destIndex + 0] = UInt8(max(0, min(255, data[sourceIndex + 0] * 255.0))) // B
+           uint8Buffer[destIndex + 1] = UInt8(max(0, min(255, data[sourceIndex + 1] * 255.0))) // G
+           uint8Buffer[destIndex + 2] = UInt8(max(0, min(255, data[sourceIndex + 2] * 255.0))) // R
+           uint8Buffer[destIndex + 3] = UInt8(max(0, min(255, data[sourceIndex + 3] * 255.0))) // A
+       }
+   }
+   
+   return buffer
+}
+
+
 
 func saveCGImageToDisk(cgImage: CGImage, filename: String) {
     // Create a retained copy of the CGImage
