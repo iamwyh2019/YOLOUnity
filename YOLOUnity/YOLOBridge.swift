@@ -7,7 +7,7 @@ public typealias YOLOCallback = @convention(c) (UnsafePointer<Float>, Int, Unsaf
 
 // Global variables
 var predictor: YOLOPredictor? = nil
-var yoloCallback: YOLOCallback?
+var yoloCallback: YOLOCallback? = nil
 
 // Register the callback
 @_cdecl("RegisterYOLOCallback")
@@ -42,12 +42,12 @@ public func RunYOLO(
     height: Int
 ) {
     guard let predictor = predictor else {
-        print("Error: YOLOPredictor not initialized.")
+        NSLog("Error: YOLOPredictor not initialized.")
         return
     }
     
     guard let cgImage = floatArrayToCGImage(data: imageData, width: width, height: height) else {
-        print("Error: Failed to convert image data.")
+        NSLog("Error: Failed to convert image data.")
         return
     }
     predictor.predict(cgImage: cgImage)

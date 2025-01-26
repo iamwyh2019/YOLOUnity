@@ -63,7 +63,7 @@ func cgImageToFloatArray(_ image: CGImage, width: Int, height: Int) -> [Float]? 
                                   bytesPerRow: width * bytesPerPixel,
                                   space: colorSpace,
                                   bitmapInfo: bitmapInfo.rawValue) else {
-        print("Error: Failed to create CGContext.")
+        NSLog("Error: Failed to create CGContext.")
         return nil
     }
 
@@ -72,7 +72,7 @@ func cgImageToFloatArray(_ image: CGImage, width: Int, height: Int) -> [Float]? 
 
     // Debug: Verify raw data size
     if rawData.count != byteCount {
-        print("Error: Mismatched raw data size. Expected \(byteCount), got \(rawData.count).")
+        NSLog("Error: Mismatched raw data size. Expected \(byteCount), got \(rawData.count).")
         return nil
     }
 
@@ -114,22 +114,22 @@ func floatArrayToCVPixelBuffer(data: UnsafePointer<Float>, width: Int, height: I
 func saveCGImageToDisk(cgImage: CGImage, filename: String) {
     // Create a retained copy of the CGImage
     guard let imageCopy = cgImage.copy() else {
-        print("Error: Failed to copy CGImage")
+        NSLog("Error: Failed to copy CGImage")
         return
     }
 
     let url = FileManager.default.temporaryDirectory.appendingPathComponent(filename)
 
     guard let destination = CGImageDestinationCreateWithURL(url as CFURL, UTType.png.identifier as CFString, 1, nil) else {
-        print("Error: Failed to create image destination.")
+        NSLog("Error: Failed to create image destination.")
         return
     }
 
     CGImageDestinationAddImage(destination, imageCopy, nil)
     if CGImageDestinationFinalize(destination) {
-        print("Image successfully saved to \(url.path)")
+        NSLog("Image successfully saved to \(url.path)")
     } else {
-        print("Error: Failed to save image to disk.")
+        NSLog("Error: Failed to save image to disk.")
     }
 }
 

@@ -45,7 +45,7 @@ class YOLOPredictor {
             case "yolo11n_seg":
                 return try? yolo11n_seg(configuration: config).model
             default:
-                print("Error: Unknown model name '\(modelName)'.")
+                NSLog("Error: Unknown model name '\(modelName)'.")
                 return nil
             }
         }() else {
@@ -53,7 +53,7 @@ class YOLOPredictor {
         }
         
         guard let detector = try? VNCoreMLModel(for: model) else {
-            print("Error: Failed to initialize the detector.")
+            NSLog("Error: Failed to initialize the detector.")
             return nil
         }
         
@@ -80,19 +80,20 @@ class YOLOPredictor {
         case "centerCrop":
             request.imageCropAndScaleOption = .centerCrop
         default:
-            print("Cannot parse scaleMethod: \(scaleMethod), defaulting to scaleFit")
+            NSLog("Cannot parse scaleMethod: \(scaleMethod), defaulting to scaleFit")
             request.imageCropAndScaleOption = .scaleFit
         }
         
         visionRequest = request
     }
     
+    
     func predict(cgImage: CGImage) {
         let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
         do {
             try handler.perform([visionRequest])
         } catch {
-            print("Prediction failed: \(error.localizedDescription)")
+            NSLog("Prediction failed: \(error.localizedDescription)")
         }
     }
     
@@ -101,20 +102,20 @@ class YOLOPredictor {
         do {
             try handler.perform([visionRequest])
         } catch {
-            print("Prediction failed: \(error.localizedDescription)")
+            NSLog("Prediction failed: \(error.localizedDescription)")
         }
     }
     
     func processObservations(for request: VNRequest, error: Error?) {
         DispatchQueue.main.async {
             if let error = error {
-                print("Error in processing observations: \(error.localizedDescription)")
+                NSLog("Error in processing observations: \(error.localizedDescription)")
                 return
             }
             
             // Access results
             guard let results = request.results as? [VNCoreMLFeatureValueObservation] else {
-                print("No results found or unexpected result type.")
+                NSLog("No results found or unexpected result type.")
                 return
             }
             
@@ -150,11 +151,11 @@ class YOLOPredictor {
                         limit: 100))
             }
             
+            NSLog("Found \(nmsPredictions.count) objects")
+            
             let maskProtos: [[Float]] = getMaskProtos(masks: masks, numMasks: numMasks)
             
             for (i,box) in nmsPredictions.enumerated() {
-                print("box: \(box.xyxy)")
-                
                 let mask = getMasksFromProtos(
                     maskProtos: maskProtos,
                     coefficients: box.maskCoefficients
@@ -174,11 +175,16 @@ class YOLOPredictor {
                     bbox: box.xyxy
                 )
                 
-                let filename: String = "\(i)_\(box.classIndex)_mask.png"
+//                let filename: String = "\(i)_\(box.classIndex)_mask.png"
+//                
+//                let exportPath = saveGrayscaleImage(mask: croppedMask, width: 640, height: 640, filename: filename)
+//                
+//                print("Exported to \(exportPath)")
                 
-                let exportPath = saveGrayscaleImage(mask: upsampledMask, width: 640, height: 640, filename: filename)
                 
-                print("Exported to \(exportPath)")
+                if let callback = yoloCallback {
+                    // TODO
+                }
             }
         }
     }

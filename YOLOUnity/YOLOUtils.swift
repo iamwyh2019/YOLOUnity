@@ -138,33 +138,17 @@ func getMaskProtos(masks: MLMultiArray, numMasks: Int) -> [[Float]] {
 }
 
 
-func getMaskProtos_Naive(masks: MLMultiArray, numMasks: Int) -> [[Float]] {
-    var finalMasks: [[Float]] = []
-    let rows = masks.shape[3].intValue
-    let columns = masks.shape[2].intValue
-    for tube in 0..<numMasks {
-        var mask: [Float] = []
-        for i in 0..<(rows*columns) {
-            let index = tube*(rows*columns)+i
-            mask.append(Float(truncating: masks[index]))
-        }
-        finalMasks.append(mask)
-    }
-    return finalMasks
-}
-
-
 func getMasksFromProtos(
     maskProtos: [[Float]],
     coefficients: [Float]
 ) -> [Float] {
     guard maskProtos.count == coefficients.count else {
-        print("Unmatched length: \(maskProtos.count) vs \(coefficients.count)")
+        NSLog("Unmatched length: \(maskProtos.count) vs \(coefficients.count)")
         return []
     }
     
     guard !maskProtos.isEmpty else {
-        print("No masks provided")
+        NSLog("No masks provided")
         return []
     }
     
@@ -206,12 +190,12 @@ func cropMask(mask: [Float], width: Int, height: Int, bbox: XYXY) -> [Float] {
     var boxMask = [Float](repeating: 0, count: width * height)
     let x1 = max(0, Int(bbox.x1))
     let y1 = max(0, Int(bbox.y1))
-    let x2 = min(width, Int(bbox.x2))
-    let y2 = min(height, Int(bbox.y2))
+    let x2 = min(width - 1, Int(bbox.x2))
+    let y2 = min(height - 1, Int(bbox.y2))
     
-    for y in y1..<y2 {
+    for y in y1...y2 {
         let rowStart = y * width + x1
-        vDSP_vfill([1.0], &boxMask[rowStart], 1, vDSP_Length(x2 - x1))
+        vDSP_vfill([1.0], &boxMask[rowStart], 1, vDSP_Length(x2 - x1 + 1))
     }
     
     var result = [Float](repeating: 0, count: width * height)
@@ -222,7 +206,6 @@ func cropMask(mask: [Float], width: Int, height: Int, bbox: XYXY) -> [Float] {
 
 func upsampleMask(mask: [Float], width: Int, height: Int, newWidth: Int, newHeight: Int) -> [Float] {
     let sourceRowBytes = width * MemoryLayout<Float>.stride
-    let sourceByteCount = sourceRowBytes * height
     
     let sourceData = UnsafeMutablePointer<Float>.allocate(capacity: width * height)
     sourceData.initialize(from: mask, count: width * height)
@@ -250,7 +233,8 @@ func upsampleMask(mask: [Float], width: Int, height: Int, newWidth: Int, newHeig
     guard error == kvImageNoError else {
         sourceData.deallocate()
         destinationBuffer.free()
-        fatalError("Error during upsampling: \(error)")
+        NSLog("Error during upsampling: \(error)")
+        return []
     }
     
     let result = Array(
