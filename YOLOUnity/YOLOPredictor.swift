@@ -57,8 +57,6 @@ class YOLOPredictor {
             return nil
         }
         
-        print(model.modelDescription.inputDescriptionsByName)
-        
         self.model = model
         self.detector = detector
         self.detector.featureProvider = ThresholdProvider()
@@ -85,6 +83,8 @@ class YOLOPredictor {
         }
         
         visionRequest = request
+        
+        NSLog("Initialized model \(modelName) with scaleMethod \(scaleMethod)")
     }
     
     
@@ -155,7 +155,7 @@ class YOLOPredictor {
             
             let maskProtos: [[Float]] = getMaskProtos(masks: masks, numMasks: numMasks)
             
-            for (i,box) in nmsPredictions.enumerated() {
+            for box in nmsPredictions {
                 let mask = getMasksFromProtos(
                     maskProtos: maskProtos,
                     coefficients: box.maskCoefficients

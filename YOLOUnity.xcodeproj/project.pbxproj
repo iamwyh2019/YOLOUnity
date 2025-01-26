@@ -28,6 +28,14 @@
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
 		586F726C2D4515E10051DAF3 /* Exceptions for "YOLOUnity" folder in "YOLOUnity" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				"Models/convert-coreml.py",
+				"Models/yolo11l-seg.pt",
+				"Models/yolo11m-seg.pt",
+				"Models/yolo11n-seg.pt",
+				"Models/yolo11s-seg.pt",
+				"Models/yolo11x-seg.pt",
+			);
 			publicHeaders = (
 				YOLOUnity.h,
 			);
@@ -252,6 +260,7 @@
 				MARKETING_VERSION = 1.0;
 				MODULE_VERIFIER_SUPPORTED_LANGUAGES = "objective-c objective-c++";
 				MODULE_VERIFIER_SUPPORTED_LANGUAGE_STANDARDS = "gnu17 gnu++20";
+				ONLY_ACTIVE_ARCH = NO;
 				PRODUCT_BUNDLE_IDENTIFIER = com.madabilitylab.YOLOUnity;
 				PRODUCT_NAME = "$(TARGET_NAME:c99extidentifier)";
 				SKIP_INSTALL = YES;
@@ -286,6 +295,7 @@
 				MARKETING_VERSION = 1.0;
 				MODULE_VERIFIER_SUPPORTED_LANGUAGES = "objective-c objective-c++";
 				MODULE_VERIFIER_SUPPORTED_LANGUAGE_STANDARDS = "gnu17 gnu++20";
+				ONLY_ACTIVE_ARCH = NO;
 				PRODUCT_BUNDLE_IDENTIFIER = com.madabilitylab.YOLOUnity;
 				PRODUCT_NAME = "$(TARGET_NAME:c99extidentifier)";
 				SKIP_INSTALL = YES;
