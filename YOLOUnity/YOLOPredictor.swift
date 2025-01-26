@@ -84,7 +84,7 @@ class YOLOPredictor {
         
         visionRequest = request
         
-        NSLog("Initialized model \(modelName) with scaleMethod \(scaleMethod)")
+        NSLog("Initialized model \(modelName) with scaleMethod \(scaleMethod), score threshold \(confidenceThreshold), iou threshold \(iouThreshold)")
     }
     
     
@@ -126,7 +126,7 @@ class YOLOPredictor {
             let numClasses = boxes.shape[1].intValue - 4 - numMasks
             let maskWidth = masks.shape[2].intValue
             let maskHeight = masks.shape[3].intValue
-            
+
             let boxPredictions: [BoxPrediction] = parseBoundingBoxes(
                 multiArray: boxes,
                 numClasses: numClasses,
@@ -138,6 +138,7 @@ class YOLOPredictor {
             }
             
             // apply NMS
+            
             let groupedPredictions = Dictionary(grouping: boxPredictions) { prediction in
                 prediction.classIndex
             }
@@ -151,16 +152,18 @@ class YOLOPredictor {
                         limit: 100))
             }
             
-            NSLog("Found \(nmsPredictions.count) objects")
-            
             let maskProtos: [[Float]] = getMaskProtos(masks: masks, numMasks: numMasks)
+            
+//            var i = 0
             
             for box in nmsPredictions {
                 let mask = getMasksFromProtos(
                     maskProtos: maskProtos,
                     coefficients: box.maskCoefficients
                 )
+                
                 let sigmoidMask = getSigmoidMask(mask: mask)
+                
                 let upsampledMask = upsampleMask(
                     mask: sigmoidMask,
                     width: maskWidth,
@@ -168,6 +171,7 @@ class YOLOPredictor {
                     newWidth: 640,
                     newHeight: 640
                 )
+                
                 let croppedMask = cropMask(
                     mask: upsampledMask,
                     width: 640,
@@ -176,15 +180,16 @@ class YOLOPredictor {
                 )
                 
 //                let filename: String = "\(i)_\(box.classIndex)_mask.png"
+//                i += 1
 //                
 //                let exportPath = saveGrayscaleImage(mask: croppedMask, width: 640, height: 640, filename: filename)
 //                
 //                print("Exported to \(exportPath)")
                 
-                
-                if let callback = yoloCallback {
-                    // TODO
-                }
+            }
+            
+            if let callback = yoloCallback {
+                callback(nmsPredictions.count)
             }
         }
     }

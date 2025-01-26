@@ -25,48 +25,51 @@ struct Prediction : Identifiable {
 }
 
 func parseBoundingBoxes(
-    multiArray: MLMultiArray,
-    numClasses: Int,
-    confidenceThreshold: Float) -> [BoxPrediction] {
-    let shape = multiArray.shape.map { $0.intValue }
-    let boxCount = shape[2] // number of boxes
-    let featureCount = shape[1] // 116 features per box
-    
-    var boxPredictions: [BoxPrediction] = []
+   multiArray: MLMultiArray,
+   numClasses: Int,
+   confidenceThreshold: Float) -> [BoxPrediction] {
 
-    for i in 0..<boxCount {
-        // Extract class confidences
-        let classConfidences = (4..<(4+numClasses)).map { multiArray[$0*boxCount + i].floatValue }
-        let (bestClassIndex, bestClassConfidence) = classConfidences.enumerated().max(by: { $0.element < $1.element })!
+   let boxCount = multiArray.shape[2].intValue
+   let featureCount = multiArray.shape[1].intValue
+   let numMasks = featureCount - (4 + numClasses)
+   let pointer = multiArray.dataPointer.assumingMemoryBound(to: Float.self)
+   
+   let predictions = Array(0..<boxCount).concurrentMap { i -> BoxPrediction? in
+       var maxConfidence: Float = 0
+       var bestClassIndex = 0
+       for c in 0..<numClasses {
+           let conf = pointer[(4+c)*boxCount + i]
+           if conf > maxConfidence {
+               maxConfidence = conf
+               bestClassIndex = c
+           }
+       }
+       
+       guard maxConfidence > confidenceThreshold else { return nil }
+       
+       let cx = pointer[0*boxCount + i]
+       let cy = pointer[1*boxCount + i]
+       let width = pointer[2*boxCount + i]
+       let height = pointer[3*boxCount + i]
+       
+       let maskWeights = (0..<numMasks).map { m ->
+           Float in pointer[(4 + numClasses + m)*boxCount + i]
+       }
+       
+       return BoxPrediction(
+           classIndex: bestClassIndex,
+           score: maxConfidence,
+           xyxy: XYXY(
+               x1: cx - width/2,
+               y1: cy - height/2,
+               x2: cx + width/2,
+               y2: cy + height/2
+           ),
+           maskCoefficients: maskWeights
+       )
+   }.compactMap { $0 }
 
-        // Check if the best confidence exceeds the threshold
-        guard bestClassConfidence > confidenceThreshold else { continue }
-        
-        let cx = Float(truncating: multiArray[0*boxCount + i])
-        let cy = Float(truncating: multiArray[1*boxCount + i])
-        let width   = Float(truncating: multiArray[2*boxCount + i])
-        let height  = Float(truncating: multiArray[3*boxCount + i])
-        
-        let xMin = cx - width / 2
-        let yMin = cy - height / 2
-        let xMax = cx + width / 2
-        let yMax = cy + height / 2
-        
-        // Extract mask weights (32 weights)
-        let maskWeights = ((4+numClasses)..<featureCount).map {
-            multiArray[$0*boxCount + i].floatValue
-        }
-        
-        let prediction = BoxPrediction(
-            classIndex: bestClassIndex,
-            score: bestClassConfidence,
-            xyxy: XYXY(x1: xMin, y1: yMin, x2: xMax, y2: yMax),
-            maskCoefficients: maskWeights
-        )
-        boxPredictions.append(prediction)
-    }
-    
-    return boxPredictions
+   return predictions
 }
 
 
@@ -138,30 +141,18 @@ func getMaskProtos(masks: MLMultiArray, numMasks: Int) -> [[Float]] {
 }
 
 
-func getMasksFromProtos(
-    maskProtos: [[Float]],
-    coefficients: [Float]
-) -> [Float] {
-    guard maskProtos.count == coefficients.count else {
-        NSLog("Unmatched length: \(maskProtos.count) vs \(coefficients.count)")
-        return []
-    }
-    
-    guard !maskProtos.isEmpty else {
-        NSLog("No masks provided")
-        return []
-    }
+func getMasksFromProtos(maskProtos: [[Float]], coefficients: [Float]) -> [Float] {
+    guard !maskProtos.isEmpty, maskProtos.count == coefficients.count else { return [] }
     
     let maskSize = maskProtos[0].count
+    var result = [Float](repeating: 0, count: maskSize)
     
-    var summedMask = [Float](repeating: 0, count: maskSize)
-    for (maskProto, var coefficient) in zip(maskProtos, coefficients) {
-        var multipliedMask = [Float](repeating: 0, count: maskSize)
-        vDSP_vsmul(maskProto, 1, &coefficient, &multipliedMask, 1, vDSP_Length(maskSize))
-        vDSP_vadd(summedMask, 1, multipliedMask, 1, &summedMask, 1, vDSP_Length(maskSize))
+    for (proto, coefficient) in zip(maskProtos, coefficients) {
+        // Multiply proto by the scalar coefficient and add the result to 'result'
+        vDSP_vsma(proto, 1, [coefficient], result, 1, &result, 1, vDSP_Length(maskSize))
     }
     
-    return summedMask
+    return result
 }
 
 
@@ -171,7 +162,7 @@ func getSigmoidMask(mask: [Float]) -> [Float] {
     var onef: Float = 1.0
     
     // step 1: x -> e^-x
-    let negatedMask = mask.map { -$0 }
+    let negatedMask = vDSP.multiply(-1.0, mask)
     var expNegatedMask = [Float](repeating: 0, count: maskSize)
     vvexpf(&expNegatedMask, negatedMask, &count)
     
@@ -187,19 +178,21 @@ func getSigmoidMask(mask: [Float]) -> [Float] {
 
 
 func cropMask(mask: [Float], width: Int, height: Int, bbox: XYXY) -> [Float] {
-    var boxMask = [Float](repeating: 0, count: width * height)
+    var result = [Float](repeating: 0, count: width * height)
     let x1 = max(0, Int(bbox.x1))
     let y1 = max(0, Int(bbox.y1))
     let x2 = min(width - 1, Int(bbox.x2))
     let y2 = min(height - 1, Int(bbox.y2))
-    
-    for y in y1...y2 {
-        let rowStart = y * width + x1
-        vDSP_vfill([1.0], &boxMask[rowStart], 1, vDSP_Length(x2 - x1 + 1))
+    let rowWidth = x2 - x1 + 1
+
+    DispatchQueue.concurrentPerform(iterations: y2 - y1 + 1) { i in
+       let y = y1 + i
+       let offset = y * width + x1
+       mask.withUnsafeBufferPointer { ptr in
+           vDSP_vsmul(ptr.baseAddress! + offset, 1, [1.0], &result[offset], 1, vDSP_Length(rowWidth))
+       }
     }
-    
-    var result = [Float](repeating: 0, count: width * height)
-    vDSP_vmul(mask, 1, boxMask, 1, &result, 1, vDSP_Length(width * height))
+
     return result
 }
 

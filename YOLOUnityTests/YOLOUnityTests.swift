@@ -28,17 +28,18 @@ class YOLOUnityTests: XCTestCase {
             return
         }
         
-        RegisterYOLOCallback { result1, count1, result2, count2 in
-            let array1 = Array(UnsafeBufferPointer(start: result1, count: count1))
-            let array2 = Array(UnsafeBufferPointer(start: result2, count: count2))
-            print("Result 1: \(array1)")
-            print("Result 2: \(array2)")
+        let ciImage = CIImage(cgImage: cgImage)
+        let flippedImage = ciImage.transformed(by: CGAffineTransform(scaleX: 1, y: -1))
+
+        guard let cgFlipped = CIContext().createCGImage(flippedImage, from: flippedImage.extent) else {
+           return
         }
 
-        floatArray.withUnsafeBufferPointer { buffer in
-            guard let cgImage = floatArrayToCGImage(data: buffer.baseAddress!, width: width, height: height) else { return }
-            predictor!.predict(cgImage: cgImage)
-        }
+//        floatArray.withUnsafeBufferPointer { buffer in
+//            guard let cgImage = floatArrayToCGImage(data: buffer.baseAddress!, width: width, height: height) else { return }
+//            predictor!.predict(cgImage: cgImage)
+//        }
+        predictor!.predict(cgImage: cgImage)
         
         print("Prediction completed.")
     }

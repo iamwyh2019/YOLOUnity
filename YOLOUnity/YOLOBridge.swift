@@ -3,7 +3,8 @@ import Vision
 import UIKit
 
 // Callback type
-public typealias YOLOCallback = @convention(c) (UnsafePointer<Float>, Int, UnsafePointer<Float>, Int) -> Void
+//public typealias YOLOCallback = @convention(c) (UnsafePointer<Float>, Int, UnsafePointer<Float>, Int) -> Void
+public typealias YOLOCallback = @convention(c) (Int) -> Void
 
 // Global variables
 var predictor: YOLOPredictor? = nil
@@ -50,5 +51,6 @@ public func RunYOLO(
         NSLog("Error: Failed to convert image data.")
         return
     }
+
     predictor.predict(cgImage: cgImage)
 }
