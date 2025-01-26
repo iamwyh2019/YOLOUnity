@@ -9,6 +9,9 @@ class YOLOPredictor {
     let detector: VNCoreMLModel
     let confidenceThreshold: Float
     let iouThreshold: Float
+    let modelWidth: Int
+    let modelHeight: Int
+    let classNames: [Int: String]
     
     lazy var visionRequest: VNCoreMLRequest = {
         let request = VNCoreMLRequest(
@@ -63,6 +66,8 @@ class YOLOPredictor {
         self.confidenceThreshold = confidanceThreshold
         self.iouThreshold = iouThreshold
         
+        (self.modelWidth, self.modelHeight, self.classNames) = parseModelSizeAndNames(model: model)
+        
         let request = VNCoreMLRequest(
             model: detector,
             completionHandler: { [weak self] request, error in
@@ -84,14 +89,17 @@ class YOLOPredictor {
         
         visionRequest = request
         
-        NSLog("Initialized model \(modelName) with scaleMethod \(scaleMethod), score threshold \(confidenceThreshold), iou threshold \(iouThreshold)")
+        NSLog("Initialized model \(modelName) with scaleMethod=\(scaleMethod), score threshold=\(confidenceThreshold), iou threshold=\(iouThreshold), Model width=\(modelWidth), height=\(modelHeight), numClasses=\(classNames.count)")
     }
     
     
     func predict(cgImage: CGImage) {
         let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
         do {
+//            let startTime = CACurrentMediaTime()
             try handler.perform([visionRequest])
+//            let endTime = CACurrentMediaTime()
+//            print("CGImage prediction used \(endTime - startTime) seconds (\(1.0 / (endTime - startTime)) FPS")
         } catch {
             NSLog("Prediction failed: \(error.localizedDescription)")
         }
@@ -100,7 +108,10 @@ class YOLOPredictor {
     func predict(cvPixelBuffer: CVPixelBuffer) {
         let handler = VNImageRequestHandler(cvPixelBuffer: cvPixelBuffer, options: [:])
         do {
+//            let startTime = CACurrentMediaTime()
             try handler.perform([visionRequest])
+//            let endTime = CACurrentMediaTime()
+//            print("CVPixelBuffer prediction used \(endTime - startTime) seconds (\(1.0 / (endTime - startTime)) FPS")
         } catch {
             NSLog("Prediction failed: \(error.localizedDescription)")
         }
@@ -108,6 +119,8 @@ class YOLOPredictor {
     
     func processObservations(for request: VNRequest, error: Error?) {
         DispatchQueue.main.async {
+//            let startTime = CACurrentMediaTime()
+            
             if let error = error {
                 NSLog("Error in processing observations: \(error.localizedDescription)")
                 return
@@ -133,6 +146,8 @@ class YOLOPredictor {
                 confidenceThreshold: self.confidenceThreshold
             )
             
+//            print("Got \(boxPredictions.count) raw predictions")
+            
             guard !boxPredictions.isEmpty else {
                 return
             }
@@ -155,6 +170,7 @@ class YOLOPredictor {
             let maskProtos: [[Float]] = getMaskProtos(masks: masks, numMasks: numMasks)
             
 //            var i = 0
+//            print("Got \(nmsPredictions.count) predictions")
             
             for box in nmsPredictions {
                 let mask = getMasksFromProtos(
@@ -168,14 +184,14 @@ class YOLOPredictor {
                     mask: sigmoidMask,
                     width: maskWidth,
                     height: maskHeight,
-                    newWidth: 640,
-                    newHeight: 640
+                    newWidth: self.modelWidth,
+                    newHeight: self.modelHeight
                 )
                 
                 let croppedMask = cropMask(
                     mask: upsampledMask,
-                    width: 640,
-                    height: 640,
+                    width: self.modelWidth,
+                    height: self.modelHeight,
                     bbox: box.xyxy
                 )
                 
@@ -187,6 +203,9 @@ class YOLOPredictor {
 //                print("Exported to \(exportPath)")
                 
             }
+            
+//            let endTime = CACurrentMediaTime()
+//            print("Processing used \(endTime - startTime) seconds (\(1.0 / (endTime - startTime)) FPS")
             
             if let callback = yoloCallback {
                 callback(nmsPredictions.count)

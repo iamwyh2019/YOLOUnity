@@ -266,3 +266,73 @@ func IOU(box1: XYXY, box2: XYXY) -> Float {
     
     return interArea / unionArea
 }
+
+
+func parseModelSizeAndNames(model: MLModel) -> (width: Int, height: Int, names: [Int: String]) {
+    // this is representation in Python, need to change to standard JSON
+    var classNames: [Int: String] = [:]
+    var width: Int = -1
+    var height: Int = -1
+    
+    if let metadata = model.modelDescription.metadata[.creatorDefinedKey] as? [String: Any] {
+        if let namesData = metadata["names"] as? String {
+            // Preprocess the JSON string
+            var fixedJSONString = namesData.replacingOccurrences(of: "'", with: "\"") // Convert single quotes to double quotes
+
+            // Use NSRegularExpression to quote keys
+            if let regex = try? NSRegularExpression(pattern: "(\\d+):", options: []) {
+                let range = NSRange(location: 0, length: fixedJSONString.utf16.count)
+                fixedJSONString = regex.stringByReplacingMatches(in: fixedJSONString, options: [], range: range, withTemplate: "\"$1\":")
+            }
+
+            // Decode the fixed JSON
+            if let jsonData = fixedJSONString.data(using: .utf8) {
+                do {
+                    classNames = try JSONDecoder().decode([Int: String].self, from: jsonData)
+                } catch {
+                    NSLog("Error decoding JSON: \(error)")
+                }
+            } else {
+                NSLog("Error: Could not convert string to data.")
+            }
+        } else {
+            NSLog("Error: `names` field not found or invalid.")
+        }
+        
+        if let sizeData = metadata["imgsz"] as? String {
+            // sizeData is in the form of "[%d, %d]"
+            let pattern = #"^\[\s*(\d+),\s*(\d+)\s*\]$"#
+            if let regex = try? NSRegularExpression(pattern: pattern) {
+                // Search for matches
+                if let match = regex.firstMatch(in: sizeData, range: NSRange(sizeData.startIndex..., in: sizeData)) {
+                    // Extract the matched groups
+                    if let range1 = Range(match.range(at: 1), in: sizeData),
+                       let range2 = Range(match.range(at: 2), in: sizeData) {
+                        let number1 = Int(sizeData[range1])
+                        let number2 = Int(sizeData[range2])
+                        
+                        if let number1 = number1, let number2 = number2 {
+                            width = number1
+                            height = number2
+                        } else {
+                            NSLog("Error: failed to parse `imgsz` field as integers: \"\(sizeData)\".")
+                        }
+                    } else {
+                        NSLog("Error: failed to parse `imgsz` field as integers: \"\(sizeData)\".")
+                    }
+                }
+                else {
+                    NSLog("Error: failed to parse `imgsz` field as integers: \"\(sizeData)\".")
+                }
+            } else {
+                NSLog("Error: failed to parse `imgsz` field as integers: \"\(sizeData)\".")
+            }
+        } else {
+            NSLog("Error: `imgsz` field not found or invalid.")
+        }
+    } else {
+        NSLog("Cannot find metadata in model description.")
+    }
+    
+    return (width: width, height: height, names: classNames)
+}

@@ -28,19 +28,16 @@ class YOLOUnityTests: XCTestCase {
             return
         }
         
-        let ciImage = CIImage(cgImage: cgImage)
-        let flippedImage = ciImage.transformed(by: CGAffineTransform(scaleX: 1, y: -1))
+        print("Testing with image \(width)x\(height)")
 
-        guard let cgFlipped = CIContext().createCGImage(flippedImage, from: flippedImage.extent) else {
-           return
-        }
-
-//        floatArray.withUnsafeBufferPointer { buffer in
+        floatArray.withUnsafeBufferPointer { buffer in
 //            guard let cgImage = floatArrayToCGImage(data: buffer.baseAddress!, width: width, height: height) else { return }
 //            predictor!.predict(cgImage: cgImage)
-//        }
-        predictor!.predict(cgImage: cgImage)
+            let cvPixelBuffer = try! floatArrayToCVPixelBuffer(data: buffer.baseAddress!, width: width, height: height)!
+            predictor!.predict(cvPixelBuffer: cvPixelBuffer)
+        }
+//        predictor!.predict(cgImage: cgImage)
         
-        print("Prediction completed.")
+//        print("Prediction completed.")
     }
 }

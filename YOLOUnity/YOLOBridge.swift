@@ -47,10 +47,17 @@ public func RunYOLO(
         return
     }
     
-    guard let cgImage = floatArrayToCGImage(data: imageData, width: width, height: height) else {
+    guard let cvPixelBuffer = floatArrayToCVPixelBuffer(data: imageData, width: width, height: height) else {
         NSLog("Error: Failed to convert image data.")
         return
     }
-
-    predictor.predict(cgImage: cgImage)
+    
+    predictor.predict(cvPixelBuffer: cvPixelBuffer)
+    
+//    guard let cgImage = floatArrayToCGImage(data: imageData, width: width, height: height) else {
+//        NSLog("Error: Failed to convert image data.")
+//        return
+//    }
+//
+//    predictor.predict(cgImage: cgImage)
 }
