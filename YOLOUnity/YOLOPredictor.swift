@@ -169,7 +169,7 @@ class YOLOPredictor {
             
             let maskProtos: [[Float]] = getMaskProtos(masks: masks, numMasks: numMasks)
             
-//            var i = 0
+            var i = 0
 //            print("Got \(nmsPredictions.count) predictions")
             
             for box in nmsPredictions {
@@ -188,7 +188,14 @@ class YOLOPredictor {
                     newHeight: self.modelHeight
                 )
                 
-                let croppedMask = cropMask(
+//                let croppedMask = cropMask(
+//                    mask: upsampledMask,
+//                    width: self.modelWidth,
+//                    height: self.modelHeight,
+//                    bbox: box.xyxy
+//                )
+                
+                let (croppedMask, (boxWidth, boxHeight)) = cropMaskPhysical(
                     mask: upsampledMask,
                     width: self.modelWidth,
                     height: self.modelHeight,
@@ -198,7 +205,7 @@ class YOLOPredictor {
 //                let filename: String = "\(i)_\(box.classIndex)_mask.png"
 //                i += 1
 //                
-//                let exportPath = saveGrayscaleImage(mask: croppedMask, width: 640, height: 640, filename: filename)
+//                let exportPath = saveGrayscaleImage(mask: croppedMask, width: boxWidth, height: boxHeight, filename: filename)
 //                
 //                print("Exported to \(exportPath)")
                 

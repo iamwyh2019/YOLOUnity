@@ -197,6 +197,32 @@ func cropMask(mask: [Float], width: Int, height: Int, bbox: XYXY) -> [Float] {
 }
 
 
+func cropMaskPhysical(mask: [Float], width: Int, height: Int, bbox: XYXY) -> ([Float], (width: Int, height: Int)) {
+   let x1 = max(0, Int(bbox.x1))
+   let y1 = max(0, Int(bbox.y1))
+   let x2 = min(width - 1, Int(bbox.x2))
+   let y2 = min(height - 1, Int(bbox.y2))
+   let cropWidth = x2 - x1 + 1
+   let cropHeight = y2 - y1 + 1
+   
+   var cropped = [Float](repeating: 0, count: cropWidth * cropHeight)
+   
+   mask.withUnsafeBufferPointer { srcPtr in
+       cropped.withUnsafeMutableBufferPointer { dstPtr in
+           DispatchQueue.concurrentPerform(iterations: cropHeight) { y in
+               let srcOffset = (y + y1) * width + x1
+               let dstOffset = y * cropWidth
+               memcpy(dstPtr.baseAddress! + dstOffset,
+                     srcPtr.baseAddress! + srcOffset,
+                     cropWidth * MemoryLayout<Float>.stride)
+           }
+       }
+   }
+   
+   return (cropped, (cropWidth, cropHeight))
+}
+
+
 func upsampleMask(mask: [Float], width: Int, height: Int, newWidth: Int, newHeight: Int) -> [Float] {
     let sourceRowBytes = width * MemoryLayout<Float>.stride
     
