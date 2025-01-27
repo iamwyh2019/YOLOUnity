@@ -369,3 +369,89 @@ func parseModelSizeAndNames(model: MLModel) -> (width: Int, height: Int, names: 
     
     return (width: width, height: height, names: classNames)
 }
+
+
+/// Returns a closure that transforms (x, y) from the model (target) coordinate space
+/// back to the original image coordinate space, given the crop/scale option.
+func getCoordinateRestorer(
+    originalSize: (width: Float, height: Float),
+    targetSize: (width: Float, height: Float),
+    option: VNImageCropAndScaleOption
+) -> (Float, Float) -> (Float, Float) {
+    
+    let origW = originalSize.width
+    let origH = originalSize.height
+    let tW = targetSize.width
+    let tH = targetSize.height
+    
+    // We'll compute a scale in x (sx) and y (sy), plus an offset (dx, dy).
+    // All as CGFloats for convenience, then we return a closure for repeated use.
+    var sx: Float = 1
+    var sy: Float = 1
+    var dx: Float = 0
+    var dy: Float = 0
+    
+    switch option {
+    case .scaleFit:
+        // Vision fits the entire original image in targetSize,
+        // possibly adding letterbox/pillarbox.
+        let rW = tW / origW  // horizontal scale
+        let rH = tH / origH  // vertical scale
+        let s = min(rW, rH)  // used by Vision to scale while preserving aspect
+        
+        // Invert that scale
+        sx = 1.0 / s
+        sy = 1.0 / s
+        
+        // Compute leftover space (letterbox/pillarbox), then invert that offset
+        let scaledW = origW * s
+        let scaledH = origH * s
+        let padX = (tW - scaledW) / 2.0
+        let padY = (tH - scaledH) / 2.0
+        
+        dx = -padX
+        dy = -padY
+        
+    case .scaleFill:
+        // Vision stretches the original so width & height match targetSize exactly.
+        // Different scale in x vs. y, no leftover offset.
+        let rW = tW / origW
+        let rH = tH / origH
+        sx = 1.0 / rW
+        sy = 1.0 / rH
+        // dx = 0, dy = 0
+        
+    case .centerCrop:
+        // Vision scales so the smaller dimension covers targetSize,
+        // then center-crops the larger dimension.
+        let rW = tW / origW
+        let rH = tH / origH
+        let s = max(rW, rH)
+        
+        sx = 1.0 / s
+        sy = 1.0 / s
+        
+        // The dimension that overflows is cropped, centered.
+        let newW = origW * s
+        let newH = origH * s
+        let cropX = (newW - tW) / 2.0
+        let cropY = (newH - tH) / 2.0
+        
+        dx = -cropX
+        dy = -cropY
+        
+    @unknown default:
+        // Fall back or handle future cases
+        NSLog("Seriously? What mode could it be?")
+        break
+    }
+    
+    // Return a closure that applies (dx, dy) then (sx, sy).
+    // This "inverts" the transform Vision used, so (x, y) in target space
+    // is mapped back to original image space.
+    return { (x: Float, y: Float) -> (Float, Float) in
+        let tx = (x + dx) * sx
+        let ty = (y + dy) * sy
+        return (tx, ty)
+    }
+}

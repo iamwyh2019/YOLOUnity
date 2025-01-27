@@ -150,6 +150,12 @@ class YOLOPredictor {
                 return
             }
             
+            let coordinateRestorer = getCoordinateRestorer(
+                originalSize: (Float(originalWidth), Float(originalHeight)),
+                targetSize: (Float(self.modelWidth), Float(self.modelHeight)),
+                option: self.visionRequest.imageCropAndScaleOption
+            )
+            
 //            NSLog("Original size: \(originalWidth)x\(originalHeight)")
             
             let boxes: MLMultiArray = results[0].featureValue.multiArrayValue!
@@ -224,7 +230,7 @@ class YOLOPredictor {
 //
 //                print("Exported to \(exportPath)")
                 
-                print("Recognized \(self.classNames[box.classIndex, default: "Unknown"]) at \(box.xyxy)")
+                print("Recognized \(self.classNames[box.classIndex, default: "Unknown"]) at \(coordinateRestorer(box.xyxy.x1, box.xyxy.y1)), \(coordinateRestorer(box.xyxy.x2, box.xyxy.y2))")
                 
             }
             
