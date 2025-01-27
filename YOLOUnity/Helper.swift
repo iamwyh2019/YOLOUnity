@@ -172,3 +172,8 @@ func flipYAxis(image: [Float], width: Int, height: Int) -> [Float] {
     }
     return flipped
 }
+
+/// Return the timestamp in milliseconds
+func getCurrentTimestamp() -> UInt64 {
+    return UInt64(Date().timeIntervalSince1970 * 1000)
+}

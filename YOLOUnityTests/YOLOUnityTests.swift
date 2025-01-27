@@ -34,7 +34,7 @@ class YOLOUnityTests: XCTestCase {
 //            guard let cgImage = floatArrayToCGImage(data: buffer.baseAddress!, width: width, height: height) else { return }
 //            predictor!.predict(cgImage: cgImage)
             let cvPixelBuffer = try! floatArrayToCVPixelBuffer(data: buffer.baseAddress!, width: width, height: height)!
-            predictor!.predict(cvPixelBuffer: cvPixelBuffer)
+            predictor!.predict(cvPixelBuffer: cvPixelBuffer, timestamp: getCurrentTimestamp())
         }
 //        predictor!.predict(cgImage: cgImage)
         

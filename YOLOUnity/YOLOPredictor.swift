@@ -13,8 +13,8 @@ class YOLOPredictor {
     let modelHeight: Int
     let classNames: [Int: String]
     
-    lazy var visionRequest: VNCoreMLRequest = {
-        let request = VNCoreMLRequest(
+    lazy var visionRequest: YOLORequest = {
+        let request = YOLORequest(
           model: detector,
           completionHandler: {
             [weak self] request, error in
@@ -68,7 +68,7 @@ class YOLOPredictor {
         
         (self.modelWidth, self.modelHeight, self.classNames) = parseModelSizeAndNames(model: model)
         
-        let request = VNCoreMLRequest(
+        let request = YOLORequest(
             model: detector,
             completionHandler: { [weak self] request, error in
                 self?.processObservations(for: request, error: error)
@@ -95,7 +95,11 @@ class YOLOPredictor {
     }
     
     
-    func predict(cgImage: CGImage) {
+    func predict(cgImage: CGImage, timestamp: UInt64) {
+        visionRequest.userData["timestamp"] = timestamp
+        visionRequest.userData["originalWidth"] = cgImage.width
+        visionRequest.userData["originalHeight"] = cgImage.height
+        
         let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
         do {
 //            let startTime = CACurrentMediaTime()
@@ -107,7 +111,11 @@ class YOLOPredictor {
         }
     }
     
-    func predict(cvPixelBuffer: CVPixelBuffer) {
+    func predict(cvPixelBuffer: CVPixelBuffer, timestamp: UInt64) {
+        visionRequest.userData["originalWidth"] = CVPixelBufferGetWidth(cvPixelBuffer)
+        visionRequest.userData["originalHeight"] = CVPixelBufferGetHeight(cvPixelBuffer)
+        visionRequest.userData["timestamp"] = timestamp
+        
         let handler = VNImageRequestHandler(cvPixelBuffer: cvPixelBuffer, options: [:])
         do {
 //            let startTime = CACurrentMediaTime()
@@ -133,6 +141,16 @@ class YOLOPredictor {
                 NSLog("No results found or unexpected result type.")
                 return
             }
+            
+            guard let yoloRequest = request as? YOLORequest,
+                  let originalWidth = yoloRequest.userData["originalWidth"] as? Int,
+                  let originalHeight = yoloRequest.userData["originalHeight"] as? Int,
+                  let timestamp = yoloRequest.userData["timestamp"] as? UInt64 else {
+                NSLog("Missing image properties")
+                return
+            }
+            
+//            NSLog("Original size: \(originalWidth)x\(originalHeight)")
             
             let boxes: MLMultiArray = results[0].featureValue.multiArrayValue!
             let masks: MLMultiArray = results[1].featureValue.multiArrayValue!
@@ -171,7 +189,7 @@ class YOLOPredictor {
             
             let maskProtos: [[Float]] = getMaskProtos(masks: masks, numMasks: numMasks)
             
-            var i = 0
+//            var i = 0
 //            print("Got \(nmsPredictions.count) predictions")
             
             for box in nmsPredictions {
@@ -205,6 +223,8 @@ class YOLOPredictor {
 //                let exportPath = saveGrayscaleImage(mask: zeroedMask, width: boxWidth, height: boxHeight, filename: filename)
 //
 //                print("Exported to \(exportPath)")
+                
+                print("Recognized \(self.classNames[box.classIndex, default: "Unknown"]) at \(box.xyxy)")
                 
             }
             
@@ -249,12 +269,6 @@ class ThresholdProvider: MLFeatureProvider {
 }
 
 
-
-// MLMultiArray extension to flatten the array
-extension MLMultiArray {
-    func flatArray() -> [Float] {
-        let pointer = UnsafeMutablePointer<Float>(OpaquePointer(self.dataPointer))
-        let buffer = UnsafeBufferPointer(start: pointer, count: self.count)
-        return Array(buffer)
-    }
+class YOLORequest: VNCoreMLRequest {
+    var userData: [String: Any] = [:]
 }

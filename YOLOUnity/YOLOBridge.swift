@@ -40,7 +40,8 @@ public func InitializeYOLO(
 public func RunYOLO(
     imageData: UnsafePointer<Float>,
     width: Int,
-    height: Int
+    height: Int,
+    timestamp: UInt64 = 0
 ) {
     guard let predictor = predictor else {
         NSLog("Error: YOLOPredictor not initialized.")
@@ -52,7 +53,12 @@ public func RunYOLO(
         return
     }
     
-    predictor.predict(cvPixelBuffer: cvPixelBuffer)
+    if timestamp == 0 {
+        predictor.predict(cvPixelBuffer: cvPixelBuffer, timestamp: getCurrentTimestamp())
+    }
+    else {
+        predictor.predict(cvPixelBuffer: cvPixelBuffer, timestamp: timestamp)
+    }
     
 //    guard let cgImage = floatArrayToCGImage(data: imageData, width: width, height: height) else {
 //        NSLog("Error: Failed to convert image data.")
