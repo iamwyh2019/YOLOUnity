@@ -18,3 +18,21 @@ extension MLMultiArray {
         return Array(buffer)
     }
 }
+
+// Extend OpenCVWrapper for easier Swift usage
+extension OpenCVWrapper {
+    static func findContours(mask: [Float], width: Int, height: Int, corner: (x: Float, y: Float) = (0.0, 0.0), coordinateRestorer: ((Float, Float) -> (Float, Float))? = nil) -> [[(Int, Int)]] {
+        let nsContours = OpenCVWrapper.findContours(mask, width: Int32(width), height: Int32(height))
+        return nsContours.concurrentMap { contour in
+            stride(from: 0, to: (contour as! [NSNumber]).count, by: 2).map { i in
+                let numbers = contour as! [NSNumber]
+                let point = (Float(numbers[i].intValue) + corner.x, Float(numbers[i+1].intValue) + corner.y)
+                if let restorer = coordinateRestorer {
+                    let returnPoint = restorer(point.0, point.1)
+                    return (Int(returnPoint.0), Int(returnPoint.1))
+                }
+                return (Int(point.0), Int(point.1))
+            }
+        }
+    }
+}

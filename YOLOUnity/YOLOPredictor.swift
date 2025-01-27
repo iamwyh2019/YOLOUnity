@@ -129,7 +129,7 @@ class YOLOPredictor {
     
     func processObservations(for request: VNRequest, error: Error?) {
         DispatchQueue.main.async {
-//            let startTime = CACurrentMediaTime()
+            let startTime = CACurrentMediaTime()
             
             if let error = error {
                 NSLog("Error in processing observations: \(error.localizedDescription)")
@@ -215,6 +215,7 @@ class YOLOPredictor {
                 )
                 
                 let (croppedMask, (boxWidth, boxHeight)) = cropMaskPhysical(
+//                let croppedMask = cropMask(
                     mask: upsampledMask,
                     width: self.modelWidth,
                     height: self.modelHeight,
@@ -223,15 +224,20 @@ class YOLOPredictor {
                 
                 let zeroedMask = removeBelowThreshold(mask: croppedMask, threshold: 0.5)
                 
+//                let contours = OpenCVWrapper.findContours(mask: zeroedMask, width: self.modelWidth, height: self.modelHeight, coordinateRestorer: coordinateRestorer)
+                let contours = OpenCVWrapper.findContours(mask: zeroedMask, width: boxWidth, height: boxHeight, corner: (box.xyxy.x1, box.xyxy.y1), coordinateRestorer: coordinateRestorer)
+                
+//                print("Recognized \(self.classNames[box.classIndex, default: "Unknown"]) at \(coordinateRestorer(box.xyxy.x1, box.xyxy.y1)), \(coordinateRestorer(box.xyxy.x2, box.xyxy.y2)), with contours \(contours)")
+                
+//                let coloredMap = grayscaleToRGB(mask: zeroedMask, width: self.modelWidth, height: self.modelHeight)
+//                let contoured = drawContour(mask: coloredMap, width: self.modelWidth, height: self.modelHeight, contours: contours)
+//                
 //                let filename: String = "\(i)_\(self.classNames[box.classIndex, default: "Unknown"])_mask.png"
 //                i += 1
-//                
-//                let exportPath = saveGrayscaleImage(mask: zeroedMask, width: boxWidth, height: boxHeight, filename: filename)
+//
+//                let exportPath = saveImage(mask: contoured, width: self.modelWidth, height: self.modelHeight, filename: filename, grayscale: false)
 //
 //                print("Exported to \(exportPath)")
-                
-                print("Recognized \(self.classNames[box.classIndex, default: "Unknown"]) at \(coordinateRestorer(box.xyxy.x1, box.xyxy.y1)), \(coordinateRestorer(box.xyxy.x2, box.xyxy.y2))")
-                
             }
             
 //            let endTime = CACurrentMediaTime()

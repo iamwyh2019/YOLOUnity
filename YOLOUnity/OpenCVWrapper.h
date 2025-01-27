@@ -6,6 +6,9 @@ NS_ASSUME_NONNULL_BEGIN
 
 /// Version string
 + (NSString *)opencvVersion;
++ (NSArray<NSArray<NSValue *> *> *)findContours:(const float *)mask
+                                        width:(int)width
+                                       height:(int)height;
 
 @end
 

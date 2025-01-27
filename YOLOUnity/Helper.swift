@@ -127,37 +127,157 @@ func saveCGImageToDisk(cgImage: CGImage, filename: String) {
 }
 
 
-func saveGrayscaleImage(mask: [Float], width: Int, height: Int, filename: String) -> String {
+func saveImage(mask: [Float], width: Int, height: Int, filename: String, grayscale: Bool = true) -> String {
     let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
     let fullPath = documentsPath.appendingPathComponent(filename).path
-    
-    let colorSpace = CGColorSpaceCreateDeviceGray()
+
+    let colorSpace = grayscale ? CGColorSpaceCreateDeviceGray() : CGColorSpaceCreateDeviceRGB()
     let bitmapInfo = CGBitmapInfo(rawValue: CGImageAlphaInfo.none.rawValue)
+    let bytesPerRow = grayscale ? width : width * 3
     
+    guard mask.count == bytesPerRow * height else {
+        print("Inconsistent mask size: \(mask.count) vs \(bytesPerRow * height)")
+        return ""
+    }
+
     let context = CGContext(
-        data: nil,
-        width: width,
-        height: height,
-        bitsPerComponent: 8,
-        bytesPerRow: width,
-        space: colorSpace,
-        bitmapInfo: bitmapInfo.rawValue
+       data: nil,
+       width: width,
+       height: height,
+       bitsPerComponent: 8,
+       bytesPerRow: bytesPerRow,
+       space: colorSpace,
+       bitmapInfo: bitmapInfo.rawValue
     )!
-    
+
     var clipped = Array(repeating: Float(0), count: mask.count)
     vDSP_vclip(mask, 1, [0], [1], &clipped, 1, vDSP_Length(mask.count))
-    
+
     var scaled = Array(repeating: Float(0), count: mask.count)
     vDSP_vsmul(clipped, 1, [255], &scaled, 1, vDSP_Length(mask.count))
-    
+
     let byteArray = scaled.map { UInt8($0) }
-    context.data?.copyMemory(from: byteArray, byteCount: width * height)
-    
+    context.data?.copyMemory(from: byteArray, byteCount: bytesPerRow * height)
+
     let image = context.makeImage()!
     let uiImage = UIImage(cgImage: image)
     let data = uiImage.pngData()!
     try! data.write(to: URL(fileURLWithPath: fullPath))
     return fullPath
+}
+
+
+func grayscaleToRGB(mask: [Float], width: Int, height: Int) -> [Float] {
+   var rgb = [Float](repeating: 0, count: width * height * 3)
+   for i in 0..<mask.count {
+       let rgbIndex = i * 3
+       rgb[rgbIndex] = mask[i]
+       rgb[rgbIndex + 1] = mask[i]
+       rgb[rgbIndex + 2] = mask[i]
+   }
+   return rgb
+}
+
+
+func drawContour(
+   mask: [Float],
+   width: Int,
+   height: Int,
+   contours: [[(x: Int, y: Int)]],
+   color: (r: Float, g: Float, b: Float) = (1, 0, 0),
+   contourWidth: Int = 1
+) -> [Float] {
+   var result = mask
+   
+   for contour in contours {
+       for i in 0..<contour.count {
+           let p1 = contour[i]
+           let p2 = contour[(i + 1) % contour.count]
+           
+           // Bresenham's line algorithm
+           var x = p1.x
+           var y = p1.y
+           let dx = abs(p2.x - p1.x)
+           let dy = abs(p2.y - p1.y)
+           let sx = p1.x < p2.x ? 1 : -1
+           let sy = p1.y < p2.y ? 1 : -1
+           var err = dx - dy
+           
+           while true {
+               // Draw thick line by filling a square around each point
+               for offsetY in -contourWidth/2...contourWidth/2 {
+                   for offsetX in -contourWidth/2...contourWidth/2 {
+                       let px = x + offsetX
+                       let py = y + offsetY
+                       if px >= 0 && px < width && py >= 0 && py < height {
+                           let idx = (py * width + px) * 3
+                           result[idx] = color.r
+                           result[idx + 1] = color.g
+                           result[idx + 2] = color.b
+                       }
+                   }
+               }
+               
+               if x == p2.x && y == p2.y { break }
+               let e2 = 2 * err
+               if e2 > -dy {
+                   err -= dy
+                   x += sx
+               }
+               if e2 < dx {
+                   err += dx
+                   y += sy
+               }
+           }
+       }
+   }
+   return result
+}
+
+func fillPoly(mask: [Float], width: Int, height: Int, contours: [[(x: Int, y: Int)]], color: (r: Float, g: Float, b: Float) = (1, 0, 0)) -> [Float] {
+   var result = mask
+   
+   for contour in contours {
+       // For each scanline
+       var minY = Int.max
+       var maxY = Int.min
+       for point in contour {
+           minY = min(minY, point.y)
+           maxY = max(maxY, point.y)
+       }
+       
+       for y in max(0, minY)...min(height-1, maxY) {
+           var intersections: [Int] = []
+           
+           // Find intersections with scanline
+           for i in 0..<contour.count {
+               let p1 = contour[i]
+               let p2 = contour[(i + 1) % contour.count]
+               
+               if (p1.y > y && p2.y <= y) || (p2.y > y && p1.y <= y) {
+                   let x = p1.x + (p2.x - p1.x) * (y - p1.y) / (p2.y - p1.y)
+                   intersections.append(x)
+               }
+           }
+           
+           // Sort intersections
+           intersections.sort()
+           
+           // Fill between pairs of intersections
+           for i in stride(from: 0, to: intersections.count-1, by: 2) {
+               let startX = max(0, intersections[i])
+               let endX = min(width-1, intersections[i+1])
+               
+               for x in startX...endX {
+                   let idx = (y * width + x) * 3
+                   result[idx] = color.r
+                   result[idx + 1] = color.g
+                   result[idx + 2] = color.b
+               }
+           }
+       }
+   }
+   return result
 }
 
 
