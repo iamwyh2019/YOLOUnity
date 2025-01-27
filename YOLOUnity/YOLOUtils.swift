@@ -17,11 +17,10 @@ struct BoxPrediction : Identifiable {
 struct Prediction : Identifiable {
     let id = UUID()
     
-    let classIndex: Int
+    let className: String
     let score: Float
-    let box: XYXY
-    let mask: [UInt8]
-    let maskSize: (Int, Int)
+    let xyxy: XYXY
+    let contours: [[(x: Int, y: Int)]]
 }
 
 func parseBoundingBoxes(

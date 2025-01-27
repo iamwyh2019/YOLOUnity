@@ -198,7 +198,8 @@ class YOLOPredictor {
 //            var i = 0
 //            print("Got \(nmsPredictions.count) predictions")
             
-            for box in nmsPredictions {
+//            for box in nmsPredictions {
+            let contourList = nmsPredictions.concurrentMap { box in
                 let mask = getMasksFromProtos(
                     maskProtos: maskProtos,
                     coefficients: box.maskCoefficients
@@ -238,13 +239,64 @@ class YOLOPredictor {
 //                let exportPath = saveImage(mask: contoured, width: self.modelWidth, height: self.modelHeight, filename: filename, grayscale: false)
 //
 //                print("Exported to \(exportPath)")
+                
+                return contours
             }
             
 //            let endTime = CACurrentMediaTime()
 //            print("Processing used \(endTime - startTime) seconds (\(1.0 / (endTime - startTime)) FPS")
             
             if let callback = yoloCallback {
-                callback(nmsPredictions.count)
+                let namesData = nmsPredictions.map { (self.classNames[$0.classIndex, default: "unknown"] + "\0").utf8.map { UInt8($0) } }.flatMap { $0 }
+                let scores = nmsPredictions.map { $0.score }
+                
+                let boxes = nmsPredictions.flatMap { box in
+                    let p1 = coordinateRestorer(box.xyxy.x1, box.xyxy.y1)
+                    let p2 = coordinateRestorer(box.xyxy.x2, box.xyxy.y2)
+                    return [Int32(p1.0), Int32(p1.1), Int32(p2.0), Int32(p2.1)]
+                }
+                
+                // flatten all contour points
+                let contourPoints = contourList.flatMap { contours in
+                    contours.flatMap { contour in
+                        contour.flatMap { [Int32($0.0), Int32($0.1)]}
+                    }
+                }
+                
+                var contourIndices: [Int32] = []
+                var currentIndex: Int32 = 0
+                for contours in contourList {
+                    contourIndices.append(currentIndex)
+                    for contour in contours {
+                        contourIndices.append(currentIndex + Int32(contour.count))
+                        currentIndex += Int32(contour.count)
+                    }
+                    contourIndices.append(-1)
+                }
+                
+                namesData.withUnsafeBufferPointer { namesPtr in
+                    scores.withUnsafeBufferPointer { scoresPtr in
+                        boxes.withUnsafeBufferPointer { boxesPtr in
+                            contourPoints.withUnsafeBufferPointer { pointsPtr in
+                                contourIndices.withUnsafeBufferPointer { indicesPtr in
+                                    callback(
+                                        Int32(nmsPredictions.count),
+                                        namesPtr.baseAddress!,
+                                        Int32(namesData.count),
+                                        scoresPtr.baseAddress!,
+                                        boxesPtr.baseAddress!,
+                                        pointsPtr.baseAddress!,
+                                        Int32(contourPoints.count),
+                                        indicesPtr.baseAddress!,
+                                        Int32(contourIndices.count),
+                                        timestamp
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+                
             }
         }
     }
