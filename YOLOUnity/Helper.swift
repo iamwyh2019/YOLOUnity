@@ -147,10 +147,8 @@ func saveGrayscaleImage(mask: [Float], width: Int, height: Int, filename: String
     var clipped = Array(repeating: Float(0), count: mask.count)
     vDSP_vclip(mask, 1, [0], [1], &clipped, 1, vDSP_Length(mask.count))
     
-    let binarized_mask: [Float] = mask.map { $0 > 0.5 ? 1 : 0 }
-    
     var scaled = Array(repeating: Float(0), count: mask.count)
-    vDSP_vsmul(binarized_mask, 1, [255], &scaled, 1, vDSP_Length(mask.count))
+    vDSP_vsmul(clipped, 1, [255], &scaled, 1, vDSP_Length(mask.count))
     
     let byteArray = scaled.map { UInt8($0) }
     context.data?.copyMemory(from: byteArray, byteCount: width * height)

@@ -4,7 +4,7 @@ NS_ASSUME_NONNULL_BEGIN
 
 @interface OpenCVWrapper : NSObject
 
-// Public method that uses OpenCV internally
+/// Version string
 + (NSString *)opencvVersion;
 
 @end

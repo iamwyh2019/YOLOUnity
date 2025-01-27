@@ -190,13 +190,6 @@ class YOLOPredictor {
                     newHeight: self.modelHeight
                 )
                 
-//                let croppedMask = cropMask(
-//                    mask: upsampledMask,
-//                    width: self.modelWidth,
-//                    height: self.modelHeight,
-//                    bbox: box.xyxy
-//                )
-                
                 let (croppedMask, (boxWidth, boxHeight)) = cropMaskPhysical(
                     mask: upsampledMask,
                     width: self.modelWidth,
@@ -204,11 +197,13 @@ class YOLOPredictor {
                     bbox: box.xyxy
                 )
                 
-//                let filename: String = "\(i)_\(box.classIndex)_mask.png"
+                let zeroedMask = removeBelowThreshold(mask: croppedMask, threshold: 0.5)
+                
+//                let filename: String = "\(i)_\(self.classNames[box.classIndex, default: "Unknown"])_mask.png"
 //                i += 1
 //                
-//                let exportPath = saveGrayscaleImage(mask: croppedMask, width: boxWidth, height: boxHeight, filename: filename)
-//                
+//                let exportPath = saveGrayscaleImage(mask: zeroedMask, width: boxWidth, height: boxHeight, filename: filename)
+//
 //                print("Exported to \(exportPath)")
                 
             }

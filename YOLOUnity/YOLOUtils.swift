@@ -269,6 +269,13 @@ func upsampleMask(mask: [Float], width: Int, height: Int, newWidth: Int, newHeig
 }
 
 
+func removeBelowThreshold(mask: [Float], threshold: Float = 0.5) -> [Float] {
+    /// makes all entries lower than threshold to be 0
+    /// values above threshold is left as it is, but it doesn't affect finding contours
+    return vDSP.threshold(mask, to: threshold, with: .zeroFill)
+}
+
+
 
 func sigmoid(value: Float) -> Float {
     return 1.0 / (1.0 + exp(-value))
