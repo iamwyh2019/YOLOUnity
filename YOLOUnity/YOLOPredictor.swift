@@ -89,6 +89,8 @@ class YOLOPredictor {
         
         visionRequest = request
         
+        NSLog("OpenCV version: \(OpenCVWrapper.opencvVersion())")
+        
         NSLog("Initialized model \(modelName) with scaleMethod=\(scaleMethod), score threshold=\(confidenceThreshold), iou threshold=\(iouThreshold), Model width=\(modelWidth), height=\(modelHeight), numClasses=\(classNames.count)")
     }
     

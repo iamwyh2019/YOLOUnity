@@ -37,6 +37,7 @@
 				"Models/yolo11x-seg.pt",
 			);
 			publicHeaders = (
+				OpenCVWrapper.h,
 				YOLOUnity.h,
 			);
 			target = 586F72592D4515E00051DAF3 /* YOLOUnity */;
@@ -55,6 +56,11 @@
 		586F72682D4515E10051DAF3 /* YOLOUnityTests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = YOLOUnityTests;
+			sourceTree = "<group>";
+		};
+		586F756F2D4733A60051DAF3 /* Frameworks */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Frameworks;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -84,6 +90,7 @@
 				586F725C2D4515E00051DAF3 /* YOLOUnity */,
 				586F72682D4515E10051DAF3 /* YOLOUnityTests */,
 				586F725B2D4515E00051DAF3 /* Products */,
+				586F756F2D4733A60051DAF3 /* Frameworks */,
 			);
 			sourceTree = "<group>";
 		};
@@ -124,10 +131,9 @@
 			);
 			fileSystemSynchronizedGroups = (
 				586F725C2D4515E00051DAF3 /* YOLOUnity */,
+				586F756F2D4733A60051DAF3 /* Frameworks */,
 			);
 			name = YOLOUnity;
-			packageProductDependencies = (
-			);
 			productName = YOLOUnity;
 			productReference = 586F725A2D4515E00051DAF3 /* YOLOUnity.framework */;
 			productType = "com.apple.product-type.framework";
@@ -149,8 +155,6 @@
 				586F72682D4515E10051DAF3 /* YOLOUnityTests */,
 			);
 			name = YOLOUnityTests;
-			packageProductDependencies = (
-			);
 			productName = YOLOUnityTests;
 			productReference = 586F72642D4515E10051DAF3 /* YOLOUnityTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
@@ -167,6 +171,7 @@
 				TargetAttributes = {
 					586F72592D4515E00051DAF3 = {
 						CreatedOnToolsVersion = 16.2;
+						LastSwiftMigration = 1620;
 					};
 					586F72632D4515E10051DAF3 = {
 						CreatedOnToolsVersion = 16.2;
@@ -240,6 +245,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				BUILD_LIBRARY_FOR_DISTRIBUTION = YES;
+				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEFINES_MODULE = YES;
@@ -248,6 +254,10 @@
 				DYLIB_CURRENT_VERSION = 1;
 				DYLIB_INSTALL_NAME_BASE = "@rpath";
 				ENABLE_MODULE_VERIFIER = YES;
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(PROJECT_DIR)/Frameworks",
+				);
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
@@ -266,6 +276,7 @@
 				SKIP_INSTALL = YES;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_INSTALL_OBJC_HEADER = NO;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
@@ -275,6 +286,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				BUILD_LIBRARY_FOR_DISTRIBUTION = YES;
+				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEFINES_MODULE = YES;
@@ -283,6 +295,10 @@
 				DYLIB_CURRENT_VERSION = 1;
 				DYLIB_INSTALL_NAME_BASE = "@rpath";
 				ENABLE_MODULE_VERIFIER = YES;
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(PROJECT_DIR)/Frameworks",
+				);
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
