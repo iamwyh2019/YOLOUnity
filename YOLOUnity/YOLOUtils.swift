@@ -24,52 +24,60 @@ struct Prediction : Identifiable {
 }
 
 func parseBoundingBoxes(
-   multiArray: MLMultiArray,
-   numClasses: Int,
-   confidenceThreshold: Float) -> [BoxPrediction] {
+    multiArray: MLMultiArray,
+    numClasses: Int,
+    confidenceThreshold: Float
+) -> [BoxPrediction] {
+    let boxCount = multiArray.shape[2].intValue
+    let featureCount = multiArray.shape[1].intValue
+    let numMasks = featureCount - (4 + numClasses)
+    let pointer = multiArray.dataPointer.assumingMemoryBound(to: Float.self)
+    let stride = boxCount
 
-   let boxCount = multiArray.shape[2].intValue
-   let featureCount = multiArray.shape[1].intValue
-   let numMasks = featureCount - (4 + numClasses)
-   let pointer = multiArray.dataPointer.assumingMemoryBound(to: Float.self)
-   
-   let predictions = Array(0..<boxCount).concurrentMap { i -> BoxPrediction? in
-       var maxConfidence: Float = 0
-       var bestClassIndex = 0
-       for c in 0..<numClasses {
-           let conf = pointer[(4+c)*boxCount + i]
-           if conf > maxConfidence {
-               maxConfidence = conf
-               bestClassIndex = c
-           }
-       }
-       
-       guard maxConfidence > confidenceThreshold else { return nil }
-       
-       let cx = pointer[0*boxCount + i]
-       let cy = pointer[1*boxCount + i]
-       let width = pointer[2*boxCount + i]
-       let height = pointer[3*boxCount + i]
-       
-       let maskWeights = (0..<numMasks).map { m ->
-           Float in pointer[(4 + numClasses + m)*boxCount + i]
-       }
-       
-       return BoxPrediction(
-           classIndex: bestClassIndex,
-           score: maxConfidence,
-           xyxy: XYXY(
-               x1: cx - width/2,
-               y1: cy - height/2,
-               x2: cx + width/2,
-               y2: cy + height/2
-           ),
-           maskCoefficients: maskWeights
-       )
-   }.compactMap { $0 }
+    // Precompute pointer offsets to avoid repeated multiplication
+    let bboxStart    = pointer
+    let classStart   = pointer.advanced(by: 4 * stride)
+    let maskStartAll = pointer.advanced(by: (4 + numClasses) * stride)
 
-   return predictions
+    return Array(0..<boxCount).concurrentMap { i -> BoxPrediction? in
+        // Find the best class and confidence
+        var maxConfidence: Float = 0
+        var bestClassIndex = -1
+        for c in 0..<numClasses {
+            let conf = classStart.advanced(by: c * stride)[i]
+            if conf > maxConfidence {
+                maxConfidence = conf
+                bestClassIndex = c
+            }
+        }
+        guard maxConfidence > confidenceThreshold, bestClassIndex >= 0 else { return nil }
+        
+        // Read bounding box data
+        let cx = bboxStart.advanced(by: 0 * stride)[i]
+        let cy = bboxStart.advanced(by: 1 * stride)[i]
+        let w  = bboxStart.advanced(by: 2 * stride)[i]
+        let h  = bboxStart.advanced(by: 3 * stride)[i]
+        
+        // Read mask coefficients
+        let maskCoefficients = (0..<numMasks).map { m -> Float in
+            maskStartAll.advanced(by: m * stride)[i]
+        }
+        
+        return BoxPrediction(
+            classIndex: bestClassIndex,
+            score: maxConfidence,
+            xyxy: XYXY(
+                x1: cx - w / 2,
+                y1: cy - h / 2,
+                x2: cx + w / 2,
+                y2: cy + h / 2
+            ),
+            maskCoefficients: maskCoefficients
+        )
+    }
+    .compactMap { $0 }
 }
+
 
 
 func nonMaximumSuppression(
@@ -133,7 +141,7 @@ func getMaskProtos(masks: MLMultiArray, numMasks: Int) -> [[Float]] {
     let pointer = masks.dataPointer.assumingMemoryBound(to: Float.self)
     let maskStride = masks.strides[1].intValue
     
-    return (0..<numMasks).map { maskIdx -> [Float] in
+    return Array(0..<numMasks).concurrentMap { maskIdx -> [Float] in
         let start = pointer.advanced(by: maskIdx * maskStride)
         return Array(UnsafeBufferPointer(start: start, count: maskSize))
     }
