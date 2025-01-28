@@ -128,7 +128,7 @@ class YOLOPredictor {
     }
     
     func processObservations(for request: VNRequest, error: Error?) {
-        DispatchQueue.main.async {
+        DispatchQueue.global(qos: .userInitiated).async {
             let startTime = CACurrentMediaTime()
             
             if let error = error {
