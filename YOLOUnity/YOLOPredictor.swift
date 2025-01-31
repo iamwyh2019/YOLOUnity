@@ -95,10 +95,12 @@ class YOLOPredictor {
     }
     
     
-    func predict(cgImage: CGImage, timestamp: UInt64) {
+    func predict(cgImage: CGImage, timestamp: UInt64, scaleX: Float = 1.0, scaleY: Float = 1.0) {
         visionRequest.userData["timestamp"] = timestamp
         visionRequest.userData["originalWidth"] = cgImage.width
         visionRequest.userData["originalHeight"] = cgImage.height
+        visionRequest.userData["scaleX"] = scaleX
+        visionRequest.userData["scaleY"] = scaleY
         
         let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
         do {
@@ -111,10 +113,12 @@ class YOLOPredictor {
         }
     }
     
-    func predict(cvPixelBuffer: CVPixelBuffer, timestamp: UInt64) {
+    func predict(cvPixelBuffer: CVPixelBuffer, timestamp: UInt64, scaleX: Float = 1.0, scaleY: Float = 1.0) {
+        visionRequest.userData["timestamp"] = timestamp
         visionRequest.userData["originalWidth"] = CVPixelBufferGetWidth(cvPixelBuffer)
         visionRequest.userData["originalHeight"] = CVPixelBufferGetHeight(cvPixelBuffer)
-        visionRequest.userData["timestamp"] = timestamp
+        visionRequest.userData["scaleX"] = scaleX
+        visionRequest.userData["scaleY"] = scaleY
         
         let handler = VNImageRequestHandler(cvPixelBuffer: cvPixelBuffer, options: [:])
         do {
@@ -129,8 +133,7 @@ class YOLOPredictor {
     
     func processObservations(for request: VNRequest, error: Error?) {
         DispatchQueue.global(qos: .userInitiated).async {
-            let startTime = CACurrentMediaTime()
-            
+            // let startTime = CACurrentMediaTime()
             if let error = error {
                 NSLog("Error in processing observations: \(error.localizedDescription)")
                 return
@@ -145,7 +148,10 @@ class YOLOPredictor {
             guard let yoloRequest = request as? YOLORequest,
                   let originalWidth = yoloRequest.userData["originalWidth"] as? Int,
                   let originalHeight = yoloRequest.userData["originalHeight"] as? Int,
-                  let timestamp = yoloRequest.userData["timestamp"] as? UInt64 else {
+                  let timestamp = yoloRequest.userData["timestamp"] as? UInt64,
+                  let scaleX = yoloRequest.userData["scaleX"] as? Float,
+                  let scaleY = yoloRequest.userData["scaleY"] as? Float
+            else {
                 NSLog("Missing image properties")
                 return
             }
@@ -247,13 +253,13 @@ class YOLOPredictor {
                 let boxes = nmsPredictions.flatMap { box in
                     let p1 = coordinateRestorer(box.xyxy.x1, box.xyxy.y1)
                     let p2 = coordinateRestorer(box.xyxy.x2, box.xyxy.y2)
-                    return [Int32(p1.0), Int32(p1.1), Int32(p2.0), Int32(p2.1)]
+                    return [Int32(Float(p1.0) * scaleX), Int32(Float(p1.1) * scaleY), Int32(Float(p2.0) * scaleX), Int32(Float(p2.1) * scaleY)]
                 }
                 
                 // flatten all contour points
                 let contourPoints = contourList.flatMap { contours in
                     contours.flatMap { contour in
-                        contour.flatMap { [Int32($0.0), Int32($0.1)]}
+                        contour.flatMap { [Int32(Float($0.0) * scaleX), Int32(Float($0.1) * scaleY)]}
                     }
                 }
                 
