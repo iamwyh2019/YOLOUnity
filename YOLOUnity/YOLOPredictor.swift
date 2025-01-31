@@ -172,12 +172,6 @@ class YOLOPredictor {
                 confidenceThreshold: self.confidenceThreshold
             )
             
-//            print("Got \(boxPredictions.count) raw predictions")
-            
-            guard !boxPredictions.isEmpty else {
-                return
-            }
-            
             // apply NMS
             
             let groupedPredictions = Dictionary(grouping: boxPredictions) { prediction in
