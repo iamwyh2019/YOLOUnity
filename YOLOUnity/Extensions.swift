@@ -8,6 +8,25 @@ extension Array {
         }
         return result.map { $0! }
     }
+    
+    func concurrentEnumeratedMap<B>(_ transform: @escaping (Int, Element) -> B) -> [B] {
+        var result = [B?](repeating: nil, count: count)
+        DispatchQueue.concurrentPerform(iterations: count) { idx in
+            result[idx] = transform(idx, self[idx])
+        }
+        return result.map { $0! }
+    }
+}
+
+extension Range where Bound == Int {
+    func concurrentMap<B>(_ transform: @escaping (Int) -> B) -> [B] {
+        let count = upperBound - lowerBound
+        var result = [B?](repeating: nil, count: count)
+        DispatchQueue.concurrentPerform(iterations: count) { idx in
+            result[idx] = transform(idx + lowerBound)
+        }
+        return result.map { $0! }
+    }
 }
 
 // MLMultiArray extension to flatten the array

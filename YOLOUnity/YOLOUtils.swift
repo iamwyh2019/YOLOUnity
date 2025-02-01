@@ -39,7 +39,7 @@ func parseBoundingBoxes(
     let classStart   = pointer.advanced(by: 4 * stride)
     let maskStartAll = pointer.advanced(by: (4 + numClasses) * stride)
 
-    return Array(0..<boxCount).concurrentMap { i -> BoxPrediction? in
+    return (0..<boxCount).concurrentMap { i -> BoxPrediction? in
         // Find the best class and confidence
         var maxConfidence: Float = 0
         var bestClassIndex = -1
@@ -141,7 +141,7 @@ func getMaskProtos(masks: MLMultiArray, numMasks: Int) -> [[Float]] {
     let pointer = masks.dataPointer.assumingMemoryBound(to: Float.self)
     let maskStride = masks.strides[1].intValue
     
-    return Array(0..<numMasks).concurrentMap { maskIdx -> [Float] in
+    return (0..<numMasks).concurrentMap { maskIdx -> [Float] in
         let start = pointer.advanced(by: maskIdx * maskStride)
         return Array(UnsafeBufferPointer(start: start, count: maskSize))
     }
@@ -163,15 +163,15 @@ func getMasksFromProtos(maskProtos: [[Float]], coefficients: [Float]) -> [Float]
 }
 
 
-func getSigmoidMask(mask: [Float]) -> [Float] {
-    let maskSize = mask.count
+func getSigmoidMask(mask: UnsafePointer<Float>, maskSize: Int) -> [Float] {
     var count = Int32(maskSize)
     var onef: Float = 1.0
+    var negOne: Float = -1.0
     
     // step 1: x -> e^-x
-    let negatedMask = vDSP.multiply(-1.0, mask)
     var expNegatedMask = [Float](repeating: 0, count: maskSize)
-    vvexpf(&expNegatedMask, negatedMask, &count)
+    vDSP_vsmul(mask, 1, &negOne, &expNegatedMask, 1, vDSP_Length(maskSize))
+    vvexpf(&expNegatedMask, expNegatedMask, &count)
     
     // step 2: e^-x -> 1+e^-x
     vDSP_vsadd(expNegatedMask, 1, &onef, &expNegatedMask, 1, vDSP_Length(maskSize))
@@ -230,49 +230,45 @@ func cropMaskPhysical(mask: [Float], width: Int, height: Int, bbox: XYXY) -> ([F
 }
 
 
-func upsampleMask(mask: [Float], width: Int, height: Int, newWidth: Int, newHeight: Int) -> [Float] {
-    let sourceRowBytes = width * MemoryLayout<Float>.stride
-    
-    let sourceData = UnsafeMutablePointer<Float>.allocate(capacity: width * height)
-    sourceData.initialize(from: mask, count: width * height)
-    
-    var sourceBuffer = vImage_Buffer(
-        data: sourceData,
-        height: vImagePixelCount(height),
-        width: vImagePixelCount(width),
-        rowBytes: sourceRowBytes
-    )
-    
-    var destinationBuffer = try! vImage_Buffer(
-        width: Int(newWidth),
-        height: Int(newHeight),
-        bitsPerPixel: 32
-    )
-    
-    let error = vImageScale_PlanarF(
-        &sourceBuffer,
-        &destinationBuffer,
-        nil,
-        vImage_Flags(kvImageNoFlags)
-    )
-    
-    guard error == kvImageNoError else {
-        sourceData.deallocate()
-        destinationBuffer.free()
-        NSLog("Error during upsampling: \(error)")
-        return []
-    }
-    
-    let result = Array(
-        UnsafeBufferPointer(
-            start: destinationBuffer.data.assumingMemoryBound(to: Float.self),
-            count: newWidth * newHeight
-        )
-    )
-    
-    sourceData.deallocate()
-    destinationBuffer.free()
-    return result
+func upsampleMask(mask: UnsafePointer<Float>, width: Int, height: Int, newWidth: Int, newHeight: Int) -> [Float] {
+   let sourceRowBytes = width * MemoryLayout<Float>.stride
+   
+   // No need to allocate and copy since we already have the pointer
+   var sourceBuffer = vImage_Buffer(
+       data: UnsafeMutableRawPointer(mutating: mask),
+       height: vImagePixelCount(height),
+       width: vImagePixelCount(width),
+       rowBytes: sourceRowBytes
+   )
+   
+   var destinationBuffer = try! vImage_Buffer(
+       width: Int(newWidth),
+       height: Int(newHeight),
+       bitsPerPixel: 32
+   )
+   
+   let error = vImageScale_PlanarF(
+       &sourceBuffer,
+       &destinationBuffer,
+       nil,
+       vImage_Flags(kvImageNoFlags)
+   )
+   
+   guard error == kvImageNoError else {
+       destinationBuffer.free()
+       NSLog("Error during upsampling: \(error)")
+       return []
+   }
+   
+   let result = Array(
+       UnsafeBufferPointer(
+           start: destinationBuffer.data.assumingMemoryBound(to: Float.self),
+           count: newWidth * newHeight
+       )
+   )
+   
+   destinationBuffer.free()
+   return result
 }
 
 

@@ -1,6 +1,7 @@
 import CoreML
 import Vision
 import UIKit
+import Accelerate
 
 
 // YOLOPredictor Class
@@ -133,7 +134,7 @@ class YOLOPredictor {
     
     func processObservations(for request: VNRequest, error: Error?) {
         DispatchQueue.global(qos: .userInitiated).async {
-            // let startTime = CACurrentMediaTime()
+//            let startTime = CACurrentMediaTime()
             if let error = error {
                 NSLog("Error in processing observations: \(error.localizedDescription)")
                 return
@@ -171,6 +172,7 @@ class YOLOPredictor {
             let numClasses = boxes.shape[1].intValue - 4 - numMasks
             let maskWidth = masks.shape[2].intValue
             let maskHeight = masks.shape[3].intValue
+            let maskSize = maskWidth * maskHeight
 
             let boxPredictions: [BoxPrediction] = parseBoundingBoxes(
                 multiArray: boxes,
@@ -193,19 +195,51 @@ class YOLOPredictor {
                         limit: 100))
             }
             
-            let maskProtos: [[Float]] = getMaskProtos(masks: masks, numMasks: numMasks)
+            let numPredictions = nmsPredictions.count
+            var coefficients = [Float](repeating: 0.0, count: numPredictions * numMasks)
+            for (i, prediction) in nmsPredictions.enumerated() {
+                prediction.maskCoefficients.withUnsafeBufferPointer { ptr in
+                    coefficients.withUnsafeMutableBufferPointer { destPtr in
+                        // Copy each prediction's coefficients to the correct offset
+                        memcpy(
+                            destPtr.baseAddress!.advanced(by: i * numMasks),
+                            ptr.baseAddress!,
+                            numMasks * MemoryLayout<Float>.stride
+                        )
+                    }
+                }
+            }
+            
+            let flatMasks = masks.flatArray()
+            
+            var allMasks = [Float](repeating: 0.0, count: numPredictions * maskSize)
+            vDSP_mmul(
+                coefficients, 1,
+                flatMasks, 1,
+                &allMasks, 1,
+                vDSP_Length(numPredictions),
+                vDSP_Length(maskSize),
+                vDSP_Length(numMasks)
+            )
+            
+            let sigmoidAllMasks = getSigmoidMask(mask: allMasks.withUnsafeBufferPointer { $0.baseAddress! },
+                                                maskSize: numPredictions * maskSize)
+            
+//            let maskProtos: [[Float]] = getMaskProtos(masks: masks, numMasks: numMasks)
             
 //            var i = 0
 //            print("Got \(nmsPredictions.count) predictions")
             
-//            for box in nmsPredictions {
-            let contourList = nmsPredictions.concurrentMap { box in
-                let mask = getMasksFromProtos(
-                    maskProtos: maskProtos,
-                    coefficients: box.maskCoefficients
-                )
+            let contourList = nmsPredictions.concurrentEnumeratedMap { (i, box) in
+//                let mask = getMasksFromProtos(
+//                    maskProtos: maskProtos,
+//                    coefficients: box.maskCoefficients
+//                )
+                let sigmoidMask = sigmoidAllMasks.withUnsafeBufferPointer { ptr in
+                    ptr.baseAddress!.advanced(by: i * maskSize)
+                }
                 
-                let sigmoidMask = getSigmoidMask(mask: mask)
+//                let sigmoidMask = getSigmoidMask(mask: mask, maskSize: maskSize)
                 
                 let upsampledMask = upsampleMask(
                     mask: sigmoidMask,
@@ -225,20 +259,7 @@ class YOLOPredictor {
                 
                 let zeroedMask = removeBelowThreshold(mask: croppedMask, threshold: 0.5)
                 
-//                let contours = OpenCVWrapper.findContours(mask: zeroedMask, width: self.modelWidth, height: self.modelHeight, coordinateRestorer: coordinateRestorer)
                 let contours = OpenCVWrapper.findContours(mask: zeroedMask, width: boxWidth, height: boxHeight, corner: (box.xyxy.x1, box.xyxy.y1), coordinateRestorer: coordinateRestorer)
-                
-//                print("Recognized \(self.classNames[box.classIndex, default: "Unknown"]) at \(coordinateRestorer(box.xyxy.x1, box.xyxy.y1)), \(coordinateRestorer(box.xyxy.x2, box.xyxy.y2)), with contours \(contours)")
-                
-//                let coloredMap = grayscaleToRGB(mask: zeroedMask, width: self.modelWidth, height: self.modelHeight)
-//                let contoured = drawContour(mask: coloredMap, width: self.modelWidth, height: self.modelHeight, contours: contours)
-//                
-//                let filename: String = "\(i)_\(self.classNames[box.classIndex, default: "Unknown"])_mask.png"
-//                i += 1
-//
-//                let exportPath = saveImage(mask: contoured, width: self.modelWidth, height: self.modelHeight, filename: filename, grayscale: false)
-//
-//                print("Exported to \(exportPath)")
                 
                 return contours
             }
