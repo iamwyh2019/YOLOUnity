@@ -68,7 +68,7 @@ func cgImageToFloatArray(_ image: CGImage, width: Int, height: Int, flipY: Bool 
 }
 
 
-func floatArrayToCVPixelBuffer(data: UnsafePointer<Float>, width: Int, height: Int, flipY: Bool = true) -> CVPixelBuffer? {
+func bytesToCVPixelBuffer(data: UnsafePointer<UInt8>, width: Int, height: Int, flipY: Bool = true) -> CVPixelBuffer? {
     var pixelBuffer: CVPixelBuffer?
     let status = CVPixelBufferCreate(kCFAllocatorDefault, width, height, kCVPixelFormatType_32BGRA, nil, &pixelBuffer)
    
@@ -84,18 +84,56 @@ func floatArrayToCVPixelBuffer(data: UnsafePointer<Float>, width: Int, height: I
     let bytesPerRow = CVPixelBufferGetBytesPerRow(buffer)
 
     DispatchQueue.concurrentPerform(iterations: height) { y in
-        let uint8Buffer = baseAddress.assumingMemoryBound(to: UInt8.self)
         let sourceY = flipY ? (height - 1 - y) : y
-        for x in 0..<width {
-        //           let sourceIndex = (y * width + x) * 4
-        //           let destIndex = y * bytesPerRow + x * 4
-            let sourceIndex = (sourceY * width + x) * 4
-            let destIndex = y * bytesPerRow + x * 4
-           
-            uint8Buffer[destIndex + 0] = UInt8(max(0, min(255, data[sourceIndex + 0] * 255.0))) // R
-            uint8Buffer[destIndex + 1] = UInt8(max(0, min(255, data[sourceIndex + 1] * 255.0))) // G
-            uint8Buffer[destIndex + 2] = UInt8(max(0, min(255, data[sourceIndex + 2] * 255.0))) // B
-            uint8Buffer[destIndex + 3] = UInt8(max(0, min(255, data[sourceIndex + 3] * 255.0))) // A
+        let sourceStart = sourceY * width * 4
+        let destStart = y * bytesPerRow
+        
+        // Direct memory copy for each row
+        memcpy(baseAddress + destStart, data + sourceStart, width * 4)
+    }
+
+    return buffer
+}
+
+
+func floatArrayToCVPixelBuffer(data: UnsafePointer<Float>, width: Int, height: Int, flipY: Bool = true) -> CVPixelBuffer? {
+    var pixelBuffer: CVPixelBuffer?
+    let status = CVPixelBufferCreate(kCFAllocatorDefault, width, height, kCVPixelFormatType_32BGRA, nil, &pixelBuffer)
+   
+    guard status == kCVReturnSuccess, let buffer = pixelBuffer else {
+        NSLog("Failed to create pixel buffer: \(status)")
+        return nil
+    }
+
+    CVPixelBufferLockBaseAddress(buffer, .init(rawValue: 0))
+    defer { CVPixelBufferUnlockBaseAddress(buffer, .init(rawValue: 0)) }
+
+    let baseAddress = CVPixelBufferGetBaseAddress(buffer)!
+    let bytesPerRow = CVPixelBufferGetBytesPerRow(buffer)
+    let uint8Buffer = baseAddress.assumingMemoryBound(to: UInt8.self)
+
+    let width4 = width * 4
+    let lookup = (0...255).map { UInt8($0) }  // Pre-calculate UInt8 conversions
+
+    DispatchQueue.concurrentPerform(iterations: height) { y in
+        let sourceY = flipY ? (height - 1 - y) : y
+        let sourceStart = sourceY * width4
+        let destStart = y * bytesPerRow
+        
+        for x in stride(from: 0, to: width4, by: 4) {
+            let sourceIndex = sourceStart + x
+            let destIndex = destStart + x
+            
+            // Use lookup table for faster conversion
+            let r = Int(data[sourceIndex] * 255.0)
+            let g = Int(data[sourceIndex + 1] * 255.0)
+            let b = Int(data[sourceIndex + 2] * 255.0)
+            let a = Int(data[sourceIndex + 3] * 255.0)
+            
+            uint8Buffer[destIndex] = lookup[max(0, min(255, r))]
+            uint8Buffer[destIndex + 1] = lookup[max(0, min(255, g))]
+            uint8Buffer[destIndex + 2] = lookup[max(0, min(255, b))]
+            uint8Buffer[destIndex + 3] = lookup[max(0, min(255, a))]
         }
     }
 

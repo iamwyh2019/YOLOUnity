@@ -69,11 +69,31 @@ public func RunYOLO(
         scaleX: scaleX,
         scaleY: scaleY
     )
+}
+
+@_cdecl("RunYOLO_Byte")
+public func RunYOLO_Byte(
+    imageData: UnsafePointer<UInt8>,
+    width: Int,
+    height: Int,
+    timestamp: UInt64 = 0,
+    scaleX: Float = 1.0,
+    scaleY: Float = 1.0
+) {
+    guard let predictor = predictor else {
+        NSLog("Error: YOLOPredictor not initialized.")
+        return
+    }
     
-//    guard let cgImage = floatArrayToCGImage(data: imageData, width: width, height: height) else {
-//        NSLog("Error: Failed to convert image data.")
-//        return
-//    }
-//
-//    predictor.predict(cgImage: cgImage)
+    guard let cvPixelBuffer = bytesToCVPixelBuffer(data: imageData, width: width, height: height) else {
+        NSLog("Error: Failed to convert image data.")
+        return
+    }
+    
+    predictor.predict(
+        cvPixelBuffer: cvPixelBuffer,
+        timestamp: timestamp == 0 ? getCurrentTimestamp() : timestamp,
+        scaleX: scaleX,
+        scaleY: scaleY
+    )
 }
