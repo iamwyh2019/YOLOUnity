@@ -43,14 +43,19 @@ func parseBoundingBoxes(
         // Find the best class and confidence
         var maxConfidence: Float = 0
         var bestClassIndex = -1
-        for c in 0..<numClasses {
-            let conf = classStart.advanced(by: c * stride)[i]
-            if conf > maxConfidence {
-                maxConfidence = conf
-                bestClassIndex = c
-            }
-        }
+        
+//        for c in 0..<numClasses {
+//            let conf = classStart.advanced(by: c * stride)[i]
+//            if conf > maxConfidence {
+//                maxConfidence = conf
+//                bestClassIndex = c
+//            }
+//        }
+        
+        let thisClassStart = classStart.advanced(by: i)
+        vDSP_maxvi(thisClassStart, stride, &maxConfidence, &bestClassIndex, vDSP_Length(numClasses))
         guard maxConfidence > confidenceThreshold, bestClassIndex >= 0 else { return nil }
+        bestClassIndex /= stride
         
         // Read bounding box data
         let cx = bboxStart.advanced(by: 0 * stride)[i]
