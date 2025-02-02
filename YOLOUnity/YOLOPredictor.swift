@@ -268,6 +268,7 @@ class YOLOPredictor {
 //            print("Processing used \(endTime - startTime) seconds (\(1.0 / (endTime - startTime)) FPS")
             
             if let callback = yoloCallback {
+                let indexData = nmsPredictions.map { Int32($0.classIndex) }
                 let namesData = nmsPredictions.map { (self.classNames[$0.classIndex, default: "unknown"] + "\0").utf8.map { UInt8($0) } }.flatMap { $0 }
                 let scores = nmsPredictions.map { $0.score }
                 
@@ -294,24 +295,26 @@ class YOLOPredictor {
                     }
                     contourIndices.append(-1)
                 }
-                
-                namesData.withUnsafeBufferPointer { namesPtr in
-                    scores.withUnsafeBufferPointer { scoresPtr in
-                        boxes.withUnsafeBufferPointer { boxesPtr in
-                            contourPoints.withUnsafeBufferPointer { pointsPtr in
-                                contourIndices.withUnsafeBufferPointer { indicesPtr in
-                                    callback(
-                                        Int32(nmsPredictions.count),
-                                        namesPtr.baseAddress!,
-                                        Int32(namesData.count),
-                                        scoresPtr.baseAddress!,
-                                        boxesPtr.baseAddress!,
-                                        pointsPtr.baseAddress!,
-                                        Int32(contourPoints.count),
-                                        indicesPtr.baseAddress!,
-                                        Int32(contourIndices.count),
-                                        timestamp
-                                    )
+                indexData.withUnsafeBufferPointer { indexPtr in
+                    namesData.withUnsafeBufferPointer { namesPtr in
+                        scores.withUnsafeBufferPointer { scoresPtr in
+                            boxes.withUnsafeBufferPointer { boxesPtr in
+                                contourPoints.withUnsafeBufferPointer { pointsPtr in
+                                    contourIndices.withUnsafeBufferPointer { indicesPtr in
+                                        callback(
+                                            Int32(nmsPredictions.count),
+                                            indexPtr.baseAddress!,
+                                            namesPtr.baseAddress!,
+                                            Int32(namesData.count),
+                                            scoresPtr.baseAddress!,
+                                            boxesPtr.baseAddress!,
+                                            pointsPtr.baseAddress!,
+                                            Int32(contourPoints.count),
+                                            indicesPtr.baseAddress!,
+                                            Int32(contourIndices.count),
+                                            timestamp
+                                        )
+                                    }
                                 }
                             }
                         }

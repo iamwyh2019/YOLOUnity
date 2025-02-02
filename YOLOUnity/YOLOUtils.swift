@@ -5,22 +5,11 @@ import Accelerate
 
 typealias XYXY = (x1: Float, y1: Float, x2: Float, y2: Float)
 
-struct BoxPrediction : Identifiable {
-    let id = UUID()
-    
+struct BoxPrediction {
     let classIndex: Int
     let score: Float
     let xyxy: XYXY
     let maskCoefficients: [Float]
-}
-
-struct Prediction : Identifiable {
-    let id = UUID()
-    
-    let className: String
-    let score: Float
-    let xyxy: XYXY
-    let contours: [[(x: Int, y: Int)]]
 }
 
 func parseBoundingBoxes(

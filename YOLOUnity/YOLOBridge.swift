@@ -6,6 +6,7 @@ import UIKit
 //public typealias YOLOCallback = @convention(c) (UnsafePointer<Float>, Int, UnsafePointer<Float>, Int) -> Void
 public typealias YOLOCallback = @convention(c) (
     Int32,                          // number of detections
+    UnsafePointer<Int32>,           // classIndex
     UnsafePointer<UInt8>, Int32,   // names data, total name bytes
     UnsafePointer<Float>,          // scores (length = numDetections)
     UnsafePointer<Int32>,          // boxes (length = numDetections * 4)
