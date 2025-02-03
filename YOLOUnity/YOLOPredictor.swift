@@ -230,7 +230,7 @@ class YOLOPredictor {
 //            var i = 0
 //            print("Got \(nmsPredictions.count) predictions")
             
-            let contourList = nmsPredictions.concurrentEnumeratedMap { (i, box) in
+            let contourList: [OpenCVWrapper.ContoursResult] = nmsPredictions.concurrentEnumeratedMap { (i, box) in
 //                let mask = getMasksFromProtos(
 //                    maskProtos: maskProtos,
 //                    coefficients: box.maskCoefficients
@@ -259,7 +259,7 @@ class YOLOPredictor {
                 
                 let zeroedMask = removeBelowThreshold(mask: croppedMask, threshold: 0.5)
                 
-                let contours = OpenCVWrapper.findContours(mask: zeroedMask, width: boxWidth, height: boxHeight, corner: (box.xyxy.x1, box.xyxy.y1), coordinateRestorer: coordinateRestorer)
+                let contours: OpenCVWrapper.ContoursResult = OpenCVWrapper.findContours(mask: zeroedMask, width: boxWidth, height: boxHeight, corner: (box.xyxy.x1, box.xyxy.y1), coordinateRestorer: coordinateRestorer)
                 
                 return contours
             }
@@ -280,8 +280,8 @@ class YOLOPredictor {
                 
                 // flatten all contour points
                 let contourPoints = contourList.flatMap { contours in
-                    contours.flatMap { contour in
-                        contour.flatMap { [Int32(Float($0.0) * scaleX), Int32(Float($0.1) * scaleY)]}
+                    contours.contours.flatMap { contour in
+                        contour.flatMap { [Int32(Float($0.0) * scaleX), Int32(Float($0.1) * scaleY)] }
                     }
                 }
                 
@@ -289,31 +289,42 @@ class YOLOPredictor {
                 var currentIndex: Int32 = 0
                 for contours in contourList {
                     contourIndices.append(currentIndex)
-                    for contour in contours {
+                    for contour in contours.contours {
                         contourIndices.append(currentIndex + Int32(contour.count))
                         currentIndex += Int32(contour.count)
                     }
                     contourIndices.append(-1)
                 }
+                
+                let centroids = contourList.flatMap { contours in
+                    [
+                        Int32(contours.centroid.0 * scaleX),
+                        Int32(contours.centroid.1 * scaleY)
+                    ]
+                }
+                
                 indexData.withUnsafeBufferPointer { indexPtr in
                     namesData.withUnsafeBufferPointer { namesPtr in
                         scores.withUnsafeBufferPointer { scoresPtr in
                             boxes.withUnsafeBufferPointer { boxesPtr in
                                 contourPoints.withUnsafeBufferPointer { pointsPtr in
                                     contourIndices.withUnsafeBufferPointer { indicesPtr in
-                                        callback(
-                                            Int32(nmsPredictions.count),
-                                            indexPtr.baseAddress!,
-                                            namesPtr.baseAddress!,
-                                            Int32(namesData.count),
-                                            scoresPtr.baseAddress!,
-                                            boxesPtr.baseAddress!,
-                                            pointsPtr.baseAddress!,
-                                            Int32(contourPoints.count),
-                                            indicesPtr.baseAddress!,
-                                            Int32(contourIndices.count),
-                                            timestamp
-                                        )
+                                        centroids.withUnsafeBufferPointer { centroidPtr in
+                                            callback(
+                                                Int32(nmsPredictions.count),
+                                                indexPtr.baseAddress!,
+                                                namesPtr.baseAddress!,
+                                                Int32(namesData.count),
+                                                scoresPtr.baseAddress!,
+                                                boxesPtr.baseAddress!,
+                                                pointsPtr.baseAddress!,
+                                                Int32(contourPoints.count),
+                                                indicesPtr.baseAddress!,
+                                                Int32(contourIndices.count),
+                                                centroidPtr.baseAddress!,
+                                                timestamp
+                                            )
+                                        }
                                     }
                                 }
                             }

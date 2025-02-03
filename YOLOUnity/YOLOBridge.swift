@@ -12,6 +12,7 @@ public typealias YOLOCallback = @convention(c) (
     UnsafePointer<Int32>,          // boxes (length = numDetections * 4)
     UnsafePointer<Int32>, Int32,   // contour points, count
     UnsafePointer<Int32>, Int32,   // contour indices, count
+    UnsafePointer<Int32>,           // centroids (length = numDetections * 2)
     UInt64                          // timestamp
 ) -> Void
 

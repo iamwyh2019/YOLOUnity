@@ -14,9 +14,9 @@
     return [NSString stringWithUTF8String:version.c_str()];
 }
 
-+ (NSArray<NSArray<NSValue *> *> *)findContours:(const float *)mask
-                                         width:(int)width
-                                        height:(int)height {
++ (NSDictionary *)findContours:(const float *)mask
+                                 width:(int)width
+                                height:(int)height {
     // Create binary Mat with continuous memory allocation
     cv::Mat binaryMat = cv::Mat::zeros(height, width, CV_8UC1);
     uint8_t* matData = binaryMat.data;
@@ -84,6 +84,40 @@
         contours.end()
     );
     
+    // Calculate combined moments and keep track of total points for fallback
+    cv::Moments combinedMoments;
+    int totalPoints = 0;
+    double sumX = 0, sumY = 0;
+    
+    for (const auto& contour : contours) {
+        // Sum up points for fallback average
+        for (const auto& point : contour) {
+            sumX += point.x;
+            sumY += point.y;
+            totalPoints++;
+        }
+        
+        // Calculate moments
+        cv::Moments m = cv::moments(contour);
+        combinedMoments.m00 += m.m00;
+        combinedMoments.m10 += m.m10;
+        combinedMoments.m01 += m.m01;
+    }
+    
+    // Calculate centroid - use moments if valid, otherwise use average
+    double cx, cy;
+    if (combinedMoments.m00 != 0) {
+        cx = combinedMoments.m10 / combinedMoments.m00;
+        cy = combinedMoments.m01 / combinedMoments.m00;
+    } else if (totalPoints > 0) {
+        cx = sumX / totalPoints;
+        cy = sumY / totalPoints;
+    } else {
+        // If no points at all, use center of image
+        cx = width / 2.0;
+        cy = height / 2.0;
+    }
+    
     // Convert to NSArray with pre-allocation
     NSMutableArray* result = [[NSMutableArray alloc] initWithCapacity:contours.size()];
     
@@ -116,7 +150,10 @@
         }
     }
 
-    return result;
+    return @{
+        @"contours": result,
+        @"centroid": @[@(cx), @(cy)]
+    };
 }
 
 @end
