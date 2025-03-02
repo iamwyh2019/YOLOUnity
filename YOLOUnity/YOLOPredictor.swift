@@ -38,8 +38,8 @@ class YOLOPredictor {
         
         guard let model: MLModel = {
             switch modelName {
-            case "yolo11x_seg":
-                return try? yolo11x_seg(configuration: config).model
+//            case "yolo11x_seg":
+//                return try? yolo11x_seg(configuration: config).model
             case "yolo11l_seg":
                 return try? yolo11l_seg(configuration: config).model
             case "yolo11m_seg":
@@ -48,6 +48,10 @@ class YOLOPredictor {
                 return try? yolo11s_seg(configuration: config).model
             case "yolo11n_seg":
                 return try? yolo11n_seg(configuration: config).model
+            case "vistas_l":
+                return try? vistas_l(configuration: config).model
+            case "vistas_m":
+                return try? vistas_m(configuration: config).model
             default:
                 NSLog("Error: Unknown model name '\(modelName)'.")
                 return nil

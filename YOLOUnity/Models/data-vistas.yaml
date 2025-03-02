@@ -1,0 +1,28 @@
+names:
+  0: curb
+  1: fence
+  2: crosswalk
+  3: rail-track
+  4: sidewalk
+  5: person
+  6: bicyclist
+  7: motorcyclist
+  8: bench
+  9: catch-basin
+  10: fire-hydrant
+  11: junction-box
+  12: pole
+  13: utility-pole
+  14: traffic-cone
+  15: pedestrians-light
+  16: traffic-light
+  17: traffic-sign
+  18: trash-can
+  19: bicycle
+  20: bus
+  21: car
+  22: motorcycle
+  23: truck
+path: /datastore1/yolo/vistas
+train: images/train
+val: images/val

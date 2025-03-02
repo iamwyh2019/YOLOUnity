@@ -30,6 +30,9 @@
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				"Models/convert-coreml.py",
+				"Models/data-vistas.yaml",
+				"Models/vistas-l.pt",
+				"Models/vistas-m.pt",
 				"Models/yolo11l-seg.pt",
 				"Models/yolo11m-seg.pt",
 				"Models/yolo11n-seg.pt",
