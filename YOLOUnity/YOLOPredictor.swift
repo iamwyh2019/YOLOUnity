@@ -35,6 +35,7 @@ class YOLOPredictor {
         // Initialize the Core ML model
         let config = MLModelConfiguration()
         config.computeUnits = .cpuAndNeuralEngine // save GPU for rendering
+//        config.computeUnits = .all
         
         guard let model: MLModel = {
             switch modelName {
@@ -145,10 +146,31 @@ class YOLOPredictor {
             }
             
             // Access results
-            guard let results = request.results as? [VNCoreMLFeatureValueObservation] else {
-                NSLog("No results found or unexpected result type.")
+            guard let results = request.results as? [VNCoreMLFeatureValueObservation],
+                  results.count >= 2 else {
+                NSLog("Error: Insufficient results. Found \(request.results?.count ?? 0) results.")
                 return
             }
+
+            // Get both multi-arrays
+            guard let array0 = results[0].featureValue.multiArrayValue,
+                  let array1 = results[1].featureValue.multiArrayValue else {
+                NSLog("Error: Could not get multi-arrays from results")
+                return
+            }
+
+            // Check dimensions to determine which is which
+            let array0Rank = array0.shape.count
+            let array1Rank = array1.shape.count
+
+            // YOLO boxes typically have rank 3, masks have rank 4
+            // Assign boxes and masks based on their dimensions
+            let (boxes, masks) = (array0Rank == 3 && array1Rank == 4) ? (array0, array1) :
+                                (array0Rank == 4 && array1Rank == 3) ? (array1, array0) :
+                                {
+                                    NSLog("Error: Unexpected array dimensions. Array 0: \(array0.shape), Array 1: \(array1.shape)")
+                                    return (array0, array1) // Default case, may not work correctly
+                                }()
             
             guard let yoloRequest = request as? YOLORequest,
                   let originalWidth = yoloRequest.userData["originalWidth"] as? Int,
@@ -168,9 +190,6 @@ class YOLOPredictor {
             )
             
 //            NSLog("Original size: \(originalWidth)x\(originalHeight)")
-            
-            let boxes: MLMultiArray = results[0].featureValue.multiArrayValue!
-            let masks: MLMultiArray = results[1].featureValue.multiArrayValue!
             
             let numMasks = masks.shape[1].intValue
             let numClasses = boxes.shape[1].intValue - 4 - numMasks
