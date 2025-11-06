@@ -1,31 +1,61 @@
 import CoreML
 
-extension Array {
-    func concurrentMap<B>(_ transform: @escaping (Element) -> B) -> [B] {
-        var result = [B?](repeating: nil, count: count)
-        DispatchQueue.concurrentPerform(iterations: count) { idx in
-            result[idx] = transform(self[idx])
+// Extension for using sequence operations with memory safety
+extension Collection {
+    func concurrentMap<T>(_ transform: (Element) -> T) -> [T] {
+        let n = count
+        if n == 0 {
+            return []
         }
-        return result.map { $0! }
+        
+        // For small collections, don't parallelize
+        if n < 32 {
+            return map(transform)
+        }
+        
+        // Use a specific number of threads based on system
+        let threadCount = Swift.min(ProcessInfo.processInfo.activeProcessorCount, n)
+        let jobsPerThread = Swift.max(1, n / threadCount)
+        
+        var result = [T?](repeating: nil, count: n)
+        DispatchQueue.concurrentPerform(iterations: threadCount) { thread in
+            let start = thread * jobsPerThread
+            let end = (thread == threadCount - 1) ? n : start + jobsPerThread
+            for i in start..<end {
+                let index = self.index(self.startIndex, offsetBy: i)
+                result[i] = transform(self[index])
+            }
+        }
+        
+        return result.compactMap { $0 }
     }
     
-    func concurrentEnumeratedMap<B>(_ transform: @escaping (Int, Element) -> B) -> [B] {
-        var result = [B?](repeating: nil, count: count)
-        DispatchQueue.concurrentPerform(iterations: count) { idx in
-            result[idx] = transform(idx, self[idx])
+    func concurrentEnumeratedMap<T>(_ transform: (Int, Element) -> T) -> [T] {
+        let n = count
+        if n == 0 {
+            return []
         }
-        return result.map { $0! }
-    }
-}
-
-extension Range where Bound == Int {
-    func concurrentMap<B>(_ transform: @escaping (Int) -> B) -> [B] {
-        let count = upperBound - lowerBound
-        var result = [B?](repeating: nil, count: count)
-        DispatchQueue.concurrentPerform(iterations: count) { idx in
-            result[idx] = transform(idx + lowerBound)
+        
+        // For small collections, don't parallelize
+        if n < 32 {
+            return enumerated().map { transform($0.offset, $0.element) }
         }
-        return result.map { $0! }
+        
+        // Use a specific number of threads based on system
+        let threadCount = Swift.min(ProcessInfo.processInfo.activeProcessorCount, n)
+        let jobsPerThread = Swift.max(1, n / threadCount)
+        
+        var result = [T?](repeating: nil, count: n)
+        DispatchQueue.concurrentPerform(iterations: threadCount) { thread in
+            let start = thread * jobsPerThread
+            let end = (thread == threadCount - 1) ? n : start + jobsPerThread
+            for i in start..<end {
+                let index = self.index(self.startIndex, offsetBy: i)
+                result[i] = transform(i, self[index])
+            }
+        }
+        
+        return result.compactMap { $0 }
     }
 }
 

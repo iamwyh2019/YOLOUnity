@@ -53,6 +53,8 @@ class YOLOPredictor {
                 return try? vistas_l(configuration: config).model
             case "vistas_m":
                 return try? vistas_m(configuration: config).model
+            case "vistas_s":
+                return try? vistas_s(configuration: config).model
             default:
                 NSLog("Error: Unknown model name '\(modelName)'.")
                 return nil
@@ -139,214 +141,219 @@ class YOLOPredictor {
     
     func processObservations(for request: VNRequest, error: Error?) {
         DispatchQueue.global(qos: .userInitiated).async {
-//            let startTime = CACurrentMediaTime()
-            if let error = error {
-                NSLog("Error in processing observations: \(error.localizedDescription)")
-                return
-            }
-            
-            // Access results
-            guard let results = request.results as? [VNCoreMLFeatureValueObservation],
-                  results.count >= 2 else {
-                NSLog("Error: Insufficient results. Found \(request.results?.count ?? 0) results.")
-                return
-            }
-
-            // Get both multi-arrays
-            guard let array0 = results[0].featureValue.multiArrayValue,
-                  let array1 = results[1].featureValue.multiArrayValue else {
-                NSLog("Error: Could not get multi-arrays from results")
-                return
-            }
-
-            // Check dimensions to determine which is which
-            let array0Rank = array0.shape.count
-            let array1Rank = array1.shape.count
-
-            // YOLO boxes typically have rank 3, masks have rank 4
-            // Assign boxes and masks based on their dimensions
-            let (boxes, masks) = (array0Rank == 3 && array1Rank == 4) ? (array0, array1) :
-                                (array0Rank == 4 && array1Rank == 3) ? (array1, array0) :
-                                {
-                                    NSLog("Error: Unexpected array dimensions. Array 0: \(array0.shape), Array 1: \(array1.shape)")
-                                    return (array0, array1) // Default case, may not work correctly
-                                }()
-            
-            guard let yoloRequest = request as? YOLORequest,
-                  let originalWidth = yoloRequest.userData["originalWidth"] as? Int,
-                  let originalHeight = yoloRequest.userData["originalHeight"] as? Int,
-                  let timestamp = yoloRequest.userData["timestamp"] as? UInt64,
-                  let scaleX = yoloRequest.userData["scaleX"] as? Float,
-                  let scaleY = yoloRequest.userData["scaleY"] as? Float
-            else {
-                NSLog("Missing image properties")
-                return
-            }
-            
-            let coordinateRestorer = getCoordinateRestorer(
-                originalSize: (Float(originalWidth), Float(originalHeight)),
-                targetSize: (Float(self.modelWidth), Float(self.modelHeight)),
-                option: self.visionRequest.imageCropAndScaleOption
-            )
-            
-//            NSLog("Original size: \(originalWidth)x\(originalHeight)")
-            
-            let numMasks = masks.shape[1].intValue
-            let numClasses = boxes.shape[1].intValue - 4 - numMasks
-            let maskWidth = masks.shape[2].intValue
-            let maskHeight = masks.shape[3].intValue
-            let maskSize = maskWidth * maskHeight
-
-            let boxPredictions: [BoxPrediction] = parseBoundingBoxes(
-                multiArray: boxes,
-                numClasses: numClasses,
-                confidenceThreshold: self.confidenceThreshold
-            )
-            
-            // apply NMS
-            
-            let groupedPredictions = Dictionary(grouping: boxPredictions) { prediction in
-                prediction.classIndex
-            }
-            
-            var nmsPredictions: [BoxPrediction] = []
-            let _ = groupedPredictions.mapValues { predictions in
-                nmsPredictions.append(
-                    contentsOf: nonMaximumSuppression(
-                        predictions: predictions,
-                        iouThreshold: self.iouThreshold,
-                        limit: 100))
-            }
-            
-            let numPredictions = nmsPredictions.count
-            var coefficients = [Float](repeating: 0.0, count: numPredictions * numMasks)
-            for (i, prediction) in nmsPredictions.enumerated() {
-                prediction.maskCoefficients.withUnsafeBufferPointer { ptr in
-                    coefficients.withUnsafeMutableBufferPointer { destPtr in
-                        // Copy each prediction's coefficients to the correct offset
-                        memcpy(
-                            destPtr.baseAddress!.advanced(by: i * numMasks),
-                            ptr.baseAddress!,
-                            numMasks * MemoryLayout<Float>.stride
+            autoreleasepool {
+                //            let startTime = CACurrentMediaTime()
+                if let error = error {
+                    NSLog("Error in processing observations: \(error.localizedDescription)")
+                    return
+                }
+                
+                // Access results
+                guard let results = request.results as? [VNCoreMLFeatureValueObservation],
+                      results.count >= 2 else {
+                    NSLog("Error: Insufficient results. Found \(request.results?.count ?? 0) results.")
+                    return
+                }
+                
+                // Get both multi-arrays
+                guard let array0 = results[0].featureValue.multiArrayValue,
+                      let array1 = results[1].featureValue.multiArrayValue else {
+                    NSLog("Error: Could not get multi-arrays from results")
+                    return
+                }
+                
+                // Check dimensions to determine which is which
+                let array0Rank = array0.shape.count
+                let array1Rank = array1.shape.count
+                
+                // YOLO boxes typically have rank 3, masks have rank 4
+                // Assign boxes and masks based on their dimensions
+                let (boxes, masks) = (array0Rank == 3 && array1Rank == 4) ? (array0, array1) :
+                (array0Rank == 4 && array1Rank == 3) ? (array1, array0) :
+                {
+                    NSLog("Error: Unexpected array dimensions. Array 0: \(array0.shape), Array 1: \(array1.shape)")
+                    return (array0, array1) // Default case, may not work correctly
+                }()
+                
+                guard let yoloRequest = request as? YOLORequest,
+                      let originalWidth = yoloRequest.userData["originalWidth"] as? Int,
+                      let originalHeight = yoloRequest.userData["originalHeight"] as? Int,
+                      let timestamp = yoloRequest.userData["timestamp"] as? UInt64,
+                      let scaleX = yoloRequest.userData["scaleX"] as? Float,
+                      let scaleY = yoloRequest.userData["scaleY"] as? Float
+                else {
+                    NSLog("Missing image properties")
+                    return
+                }
+                
+                let coordinateRestorer = getCoordinateRestorer(
+                    originalSize: (Float(originalWidth), Float(originalHeight)),
+                    targetSize: (Float(self.modelWidth), Float(self.modelHeight)),
+                    option: self.visionRequest.imageCropAndScaleOption
+                )
+                
+                //            NSLog("Original size: \(originalWidth)x\(originalHeight)")
+                
+                let numMasks = masks.shape[1].intValue
+                let numClasses = boxes.shape[1].intValue - 4 - numMasks
+                let maskWidth = masks.shape[2].intValue
+                let maskHeight = masks.shape[3].intValue
+                let maskSize = maskWidth * maskHeight
+                
+                let boxPredictions: [BoxPrediction] = parseBoundingBoxes(
+                    multiArray: boxes,
+                    numClasses: numClasses,
+                    confidenceThreshold: self.confidenceThreshold
+                )
+                
+                // apply NMS
+                
+                let groupedPredictions = Dictionary(grouping: boxPredictions) { prediction in
+                    prediction.classIndex
+                }
+                
+                var nmsPredictions: [BoxPrediction] = []
+                nmsPredictions.reserveCapacity(100)
+                let _ = groupedPredictions.mapValues { predictions in
+                    nmsPredictions.append(
+                        contentsOf: nonMaximumSuppression(
+                            predictions: predictions,
+                            iouThreshold: self.iouThreshold,
+                            limit: 20
                         )
+                    )
+                }
+                
+                let numPredictions = nmsPredictions.count
+                var coefficients = [Float](repeating: 0.0, count: numPredictions * numMasks)
+                for (i, prediction) in nmsPredictions.enumerated() {
+                    prediction.maskCoefficients.withUnsafeBufferPointer { ptr in
+                        coefficients.withUnsafeMutableBufferPointer { destPtr in
+                            // Copy each prediction's coefficients to the correct offset
+                            memcpy(
+                                destPtr.baseAddress!.advanced(by: i * numMasks),
+                                ptr.baseAddress!,
+                                numMasks * MemoryLayout<Float>.stride
+                            )
+                        }
                     }
                 }
-            }
-            
-            let flatMasks = masks.flatArray()
-            
-            var allMasks = [Float](repeating: 0.0, count: numPredictions * maskSize)
-            vDSP_mmul(
-                coefficients, 1,
-                flatMasks, 1,
-                &allMasks, 1,
-                vDSP_Length(numPredictions),
-                vDSP_Length(maskSize),
-                vDSP_Length(numMasks)
-            )
-            
-            let sigmoidAllMasks = getSigmoidMask(mask: allMasks.withUnsafeBufferPointer { $0.baseAddress! },
-                                                maskSize: numPredictions * maskSize)
-            
-//            let maskProtos: [[Float]] = getMaskProtos(masks: masks, numMasks: numMasks)
-            
-//            var i = 0
-//            print("Got \(nmsPredictions.count) predictions")
-            
-            let contourList: [OpenCVWrapper.ContoursResult] = nmsPredictions.concurrentEnumeratedMap { (i, box) in
-//                let mask = getMasksFromProtos(
-//                    maskProtos: maskProtos,
-//                    coefficients: box.maskCoefficients
-//                )
-                let sigmoidMask = sigmoidAllMasks.withUnsafeBufferPointer { ptr in
-                    ptr.baseAddress!.advanced(by: i * maskSize)
-                }
                 
-//                let sigmoidMask = getSigmoidMask(mask: mask, maskSize: maskSize)
+                let flatMasks = masks.flatArray()
                 
-                let upsampledMask = upsampleMask(
-                    mask: sigmoidMask,
-                    width: maskWidth,
-                    height: maskHeight,
-                    newWidth: self.modelWidth,
-                    newHeight: self.modelHeight
+                var allMasks = [Float](repeating: 0.0, count: numPredictions * maskSize)
+                vDSP_mmul(
+                    coefficients, 1,
+                    flatMasks, 1,
+                    &allMasks, 1,
+                    vDSP_Length(numPredictions),
+                    vDSP_Length(maskSize),
+                    vDSP_Length(numMasks)
                 )
                 
-                let (croppedMask, (boxWidth, boxHeight)) = cropMaskPhysical(
-//                let croppedMask = cropMask(
-                    mask: upsampledMask,
-                    width: self.modelWidth,
-                    height: self.modelHeight,
-                    bbox: box.xyxy
-                )
+                let sigmoidAllMasks = getSigmoidMask(mask: allMasks.withUnsafeBufferPointer { $0.baseAddress! },
+                                                     maskSize: numPredictions * maskSize)
                 
-                let zeroedMask = removeBelowThreshold(mask: croppedMask, threshold: 0.5)
+                //            let maskProtos: [[Float]] = getMaskProtos(masks: masks, numMasks: numMasks)
                 
-                let contours: OpenCVWrapper.ContoursResult = OpenCVWrapper.findContours(mask: zeroedMask, width: boxWidth, height: boxHeight, corner: (box.xyxy.x1, box.xyxy.y1), coordinateRestorer: coordinateRestorer)
+                //            var i = 0
+                //            print("Got \(nmsPredictions.count) predictions")
                 
-                return contours
-            }
-            
-//            let endTime = CACurrentMediaTime()
-//            print("Processing used \(endTime - startTime) seconds (\(1.0 / (endTime - startTime)) FPS")
-            
-            if let callback = yoloCallback {
-                let indexData = nmsPredictions.map { Int32($0.classIndex) }
-                let namesData = nmsPredictions.map { (self.classNames[$0.classIndex, default: "unknown"] + "\0").utf8.map { UInt8($0) } }.flatMap { $0 }
-                let scores = nmsPredictions.map { $0.score }
-                
-                let boxes = nmsPredictions.flatMap { box in
-                    let p1 = coordinateRestorer(box.xyxy.x1, box.xyxy.y1)
-                    let p2 = coordinateRestorer(box.xyxy.x2, box.xyxy.y2)
-                    return [Int32(Float(p1.0) * scaleX), Int32(Float(p1.1) * scaleY), Int32(Float(p2.0) * scaleX), Int32(Float(p2.1) * scaleY)]
-                }
-                
-                // flatten all contour points
-                let contourPoints = contourList.flatMap { contours in
-                    contours.contours.flatMap { contour in
-                        contour.flatMap { [Int32(Float($0.0) * scaleX), Int32(Float($0.1) * scaleY)] }
+                let contourList: [OpenCVWrapper.ContoursResult] = nmsPredictions.concurrentEnumeratedMap { (i, box) in
+                    //                let mask = getMasksFromProtos(
+                    //                    maskProtos: maskProtos,
+                    //                    coefficients: box.maskCoefficients
+                    //                )
+                    let sigmoidMask = sigmoidAllMasks.withUnsafeBufferPointer { ptr in
+                        ptr.baseAddress!.advanced(by: i * maskSize)
                     }
+                    
+                    //                let sigmoidMask = getSigmoidMask(mask: mask, maskSize: maskSize)
+                    
+                    let upsampledMask = upsampleMask(
+                        mask: sigmoidMask,
+                        width: maskWidth,
+                        height: maskHeight,
+                        newWidth: self.modelWidth,
+                        newHeight: self.modelHeight
+                    )
+                    
+                    let (croppedMask, (boxWidth, boxHeight)) = cropMaskPhysical(
+                        //                let croppedMask = cropMask(
+                        mask: upsampledMask,
+                        width: self.modelWidth,
+                        height: self.modelHeight,
+                        bbox: box.xyxy
+                    )
+                    
+                    let zeroedMask = removeBelowThreshold(mask: croppedMask, threshold: 0.5)
+                    
+                    let contours: OpenCVWrapper.ContoursResult = OpenCVWrapper.findContours(mask: zeroedMask, width: boxWidth, height: boxHeight, corner: (box.xyxy.x1, box.xyxy.y1), coordinateRestorer: coordinateRestorer)
+                    
+                    return contours
                 }
                 
-                var contourIndices: [Int32] = []
-                var currentIndex: Int32 = 0
-                for contours in contourList {
-                    contourIndices.append(currentIndex)
-                    for contour in contours.contours {
-                        contourIndices.append(currentIndex + Int32(contour.count))
-                        currentIndex += Int32(contour.count)
+                //            let endTime = CACurrentMediaTime()
+                //            print("Processing used \(endTime - startTime) seconds (\(1.0 / (endTime - startTime)) FPS")
+                
+                if let callback = yoloCallback {
+                    let indexData = nmsPredictions.map { Int32($0.classIndex) }
+                    let namesData = nmsPredictions.map { (self.classNames[$0.classIndex, default: "unknown"] + "\0").utf8.map { UInt8($0) } }.flatMap { $0 }
+                    let scores = nmsPredictions.map { $0.score }
+                    
+                    let boxes = nmsPredictions.flatMap { box in
+                        let p1 = coordinateRestorer(box.xyxy.x1, box.xyxy.y1)
+                        let p2 = coordinateRestorer(box.xyxy.x2, box.xyxy.y2)
+                        return [Int32(Float(p1.0) * scaleX), Int32(Float(p1.1) * scaleY), Int32(Float(p2.0) * scaleX), Int32(Float(p2.1) * scaleY)]
                     }
-                    contourIndices.append(-1)
-                }
-                
-                let centroids = contourList.flatMap { contours in
-                    [
-                        Int32(contours.centroid.0 * scaleX),
-                        Int32(contours.centroid.1 * scaleY)
-                    ]
-                }
-                
-                indexData.withUnsafeBufferPointer { indexPtr in
-                    namesData.withUnsafeBufferPointer { namesPtr in
-                        scores.withUnsafeBufferPointer { scoresPtr in
-                            boxes.withUnsafeBufferPointer { boxesPtr in
-                                contourPoints.withUnsafeBufferPointer { pointsPtr in
-                                    contourIndices.withUnsafeBufferPointer { indicesPtr in
-                                        centroids.withUnsafeBufferPointer { centroidPtr in
-                                            callback(
-                                                Int32(nmsPredictions.count),
-                                                indexPtr.baseAddress!,
-                                                namesPtr.baseAddress!,
-                                                Int32(namesData.count),
-                                                scoresPtr.baseAddress!,
-                                                boxesPtr.baseAddress!,
-                                                pointsPtr.baseAddress!,
-                                                Int32(contourPoints.count),
-                                                indicesPtr.baseAddress!,
-                                                Int32(contourIndices.count),
-                                                centroidPtr.baseAddress!,
-                                                timestamp
-                                            )
+                    
+                    // flatten all contour points
+                    let contourPoints = contourList.flatMap { contours in
+                        contours.contours.flatMap { contour in
+                            contour.flatMap { [Int32(Float($0.0) * scaleX), Int32(Float($0.1) * scaleY)] }
+                        }
+                    }
+                    
+                    var contourIndices: [Int32] = []
+                    var currentIndex: Int32 = 0
+                    for contours in contourList {
+                        contourIndices.append(currentIndex)
+                        for contour in contours.contours {
+                            contourIndices.append(currentIndex + Int32(contour.count))
+                            currentIndex += Int32(contour.count)
+                        }
+                        contourIndices.append(-1)
+                    }
+                    
+                    let centroids = contourList.flatMap { contours in
+                        [
+                            Int32(contours.centroid.0 * scaleX),
+                            Int32(contours.centroid.1 * scaleY)
+                        ]
+                    }
+                    
+                    indexData.withUnsafeBufferPointer { indexPtr in
+                        namesData.withUnsafeBufferPointer { namesPtr in
+                            scores.withUnsafeBufferPointer { scoresPtr in
+                                boxes.withUnsafeBufferPointer { boxesPtr in
+                                    contourPoints.withUnsafeBufferPointer { pointsPtr in
+                                        contourIndices.withUnsafeBufferPointer { indicesPtr in
+                                            centroids.withUnsafeBufferPointer { centroidPtr in
+                                                callback(
+                                                    Int32(nmsPredictions.count),
+                                                    indexPtr.baseAddress!,
+                                                    namesPtr.baseAddress!,
+                                                    Int32(namesData.count),
+                                                    scoresPtr.baseAddress!,
+                                                    boxesPtr.baseAddress!,
+                                                    pointsPtr.baseAddress!,
+                                                    Int32(contourPoints.count),
+                                                    indicesPtr.baseAddress!,
+                                                    Int32(contourIndices.count),
+                                                    centroidPtr.baseAddress!,
+                                                    timestamp
+                                                )
+                                            }
                                         }
                                     }
                                 }
@@ -354,11 +361,9 @@ class YOLOPredictor {
                         }
                     }
                 }
-                
             }
         }
     }
-
 }
 
 
