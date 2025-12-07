@@ -46,6 +46,13 @@
 			);
 			target = 586F72592D4515E00051DAF3 /* YOLOUnity */;
 		};
+		589799442EE56AC2007E0646 /* Exceptions for "Frameworks" folder in "YOLOUnity" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				.gitkeep,
+			);
+			target = 586F72592D4515E00051DAF3 /* YOLOUnity */;
+		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -64,6 +71,9 @@
 		};
 		586F756F2D4733A60051DAF3 /* Frameworks */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				589799442EE56AC2007E0646 /* Exceptions for "Frameworks" folder in "YOLOUnity" target */,
+			);
 			path = Frameworks;
 			sourceTree = "<group>";
 		};
