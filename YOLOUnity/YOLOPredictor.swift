@@ -55,6 +55,8 @@ class YOLOPredictor {
                 return try? vistas_m(configuration: config).model
             case "vistas_s":
                 return try? vistas_s(configuration: config).model
+            case "ballar_m":
+                return try? ballar_yolo11m(configuration: config).model
             default:
                 NSLog("Error: Unknown model name '\(modelName)'.")
                 return nil
@@ -85,14 +87,14 @@ class YOLOPredictor {
 //        request.imageCropAndScaleOption = .scaleFill  // .scaleFit, .scaleFill, .centerCrop
         switch scaleMethod {
         case "scaleFit":
-            request.imageCropAndScaleOption = .scaleFit
+            request.imageCropAndScaleOption = VNImageCropAndScaleOption.scaleFit
         case "scaleFill":
-            request.imageCropAndScaleOption = .scaleFill
+            request.imageCropAndScaleOption = VNImageCropAndScaleOption.scaleFill
         case "centerCrop":
-            request.imageCropAndScaleOption = .centerCrop
+            request.imageCropAndScaleOption = VNImageCropAndScaleOption.centerCrop
         default:
             NSLog("Cannot parse scaleMethod: \(scaleMethod), defaulting to scaleFit")
-            request.imageCropAndScaleOption = .scaleFit
+            request.imageCropAndScaleOption = VNImageCropAndScaleOption.scaleFit
         }
         
         visionRequest = request

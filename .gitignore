@@ -1,4 +1,5 @@
 *.pt
 
-# frameworks
-/Frameworks
+# frameworks - ignore contents but keep folder
+/Frameworks/*
+!/Frameworks/.gitkeep
