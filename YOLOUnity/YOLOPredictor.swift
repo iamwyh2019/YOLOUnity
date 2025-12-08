@@ -57,6 +57,10 @@ class YOLOPredictor {
                 return try? vistas_s(configuration: config).model
             case "ballar_m":
                 return try? ballar_yolo11m(configuration: config).model
+            case "ballar_s":
+                return try? ballar_yolo11s(configuration: config).model
+            case "ballar_n":
+                return try? ballar_yolo11n(configuration: config).model
             default:
                 NSLog("Error: Unknown model name '\(modelName)'.")
                 return nil
