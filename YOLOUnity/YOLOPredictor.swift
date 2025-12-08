@@ -49,12 +49,6 @@ class YOLOPredictor {
                 return try? yolo11s_seg(configuration: config).model
             case "yolo11n_seg":
                 return try? yolo11n_seg(configuration: config).model
-            case "vistas_l":
-                return try? vistas_l(configuration: config).model
-            case "vistas_m":
-                return try? vistas_m(configuration: config).model
-            case "vistas_s":
-                return try? vistas_s(configuration: config).model
             case "ballar_m":
                 return try? ballar_yolo11m(configuration: config).model
             case "ballar_s":
