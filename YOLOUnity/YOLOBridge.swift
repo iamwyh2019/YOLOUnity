@@ -7,7 +7,6 @@ import UIKit
 public typealias YOLOCallback = @convention(c) (
     Int32,                          // number of detections
     UnsafePointer<Int32>,           // classIndex
-    UnsafePointer<UInt8>, Int32,   // names data, total name bytes
     UnsafePointer<Float>,          // scores (length = numDetections)
     UnsafePointer<Int32>,          // boxes (length = numDetections * 4)
     UnsafePointer<Int32>, Int32,   // contour points, count
@@ -19,6 +18,22 @@ public typealias YOLOCallback = @convention(c) (
 // Global variables
 var predictor: YOLOPredictor? = nil
 var yoloCallback: YOLOCallback? = nil
+
+// Cached null-separated UTF-8 buffer of class names, indexed by classIndex.
+// Allocated lazily on first GetClassNames call; freed and rebuilt when a new
+// predictor is initialized via InitializeYOLO.
+private var cachedClassNamesPtr: UnsafeMutablePointer<UInt8>? = nil
+private var cachedClassNamesByteLength: Int32 = 0
+private var cachedClassNamesCount: Int32 = 0
+
+private func releaseClassNamesCache() {
+    if let ptr = cachedClassNamesPtr {
+        ptr.deallocate()
+        cachedClassNamesPtr = nil
+    }
+    cachedClassNamesByteLength = 0
+    cachedClassNamesCount = 0
+}
 
 // Register the callback
 @_cdecl("RegisterYOLOCallback")
@@ -34,6 +49,7 @@ public func InitializeYOLO(
     iouThreshold: Float,
     scaleMethod: UnsafePointer<CChar>
 ) -> Bool {
+    releaseClassNamesCache()
     let name = String(cString: modelName)
     let scaleMethodStr = String(cString: scaleMethod)
     predictor = YOLOPredictor(
@@ -43,6 +59,43 @@ public func InitializeYOLO(
         scaleMethod: scaleMethodStr
     )
     return predictor != nil
+}
+
+// Returns a pointer to a null-separated UTF-8 buffer of class names, indexed by
+// classIndex (0..count-1). The buffer is owned by the plugin and remains valid
+// until the next InitializeYOLO call. Missing/sparse class indices are encoded
+// as empty strings (consecutive null bytes).
+@_cdecl("GetClassNames")
+public func GetClassNames(
+    outCount: UnsafeMutablePointer<Int32>,
+    outByteLength: UnsafeMutablePointer<Int32>
+) -> UnsafePointer<UInt8>? {
+    if cachedClassNamesPtr == nil {
+        guard let predictor = predictor else {
+            outCount.pointee = 0
+            outByteLength.pointee = 0
+            return nil
+        }
+        let maxIdx = predictor.classNames.keys.max() ?? -1
+        let count = maxIdx + 1
+        var bytes: [UInt8] = []
+        for i in 0..<count {
+            if let name = predictor.classNames[i] {
+                bytes.append(contentsOf: name.utf8)
+            }
+            bytes.append(0)
+        }
+        let ptr = UnsafeMutablePointer<UInt8>.allocate(capacity: bytes.count)
+        for (i, b) in bytes.enumerated() {
+            ptr[i] = b
+        }
+        cachedClassNamesPtr = ptr
+        cachedClassNamesByteLength = Int32(bytes.count)
+        cachedClassNamesCount = Int32(count)
+    }
+    outCount.pointee = cachedClassNamesCount
+    outByteLength.pointee = cachedClassNamesByteLength
+    return UnsafePointer(cachedClassNamesPtr!)
 }
 
 

@@ -55,12 +55,12 @@ class YOLOPredictor {
                 return try? vistas_m(configuration: config).model
             case "vistas_s":
                 return try? vistas_s(configuration: config).model
-            case "ballar_m":
-                return try? ballar_yolo11m(configuration: config).model
-            case "ballar_s":
-                return try? ballar_yolo11s(configuration: config).model
-            case "ballar_n":
-                return try? ballar_yolo11n(configuration: config).model
+//            case "ballar_m":
+//                return try? ballar_yolo11m(configuration: config).model
+//            case "ballar_s":
+//                return try? ballar_yolo11s(configuration: config).model
+//            case "ballar_n":
+//                return try? ballar_yolo11n(configuration: config).model
             default:
                 NSLog("Error: Unknown model name '\(modelName)'.")
                 return nil
@@ -304,7 +304,6 @@ class YOLOPredictor {
                 
                 if let callback = yoloCallback {
                     let indexData = nmsPredictions.map { Int32($0.classIndex) }
-                    let namesData = nmsPredictions.map { (self.classNames[$0.classIndex, default: "unknown"] + "\0").utf8.map { UInt8($0) } }.flatMap { $0 }
                     let scores = nmsPredictions.map { $0.score }
                     
                     let boxes = nmsPredictions.flatMap { box in
@@ -339,27 +338,23 @@ class YOLOPredictor {
                     }
                     
                     indexData.withUnsafeBufferPointer { indexPtr in
-                        namesData.withUnsafeBufferPointer { namesPtr in
-                            scores.withUnsafeBufferPointer { scoresPtr in
-                                boxes.withUnsafeBufferPointer { boxesPtr in
-                                    contourPoints.withUnsafeBufferPointer { pointsPtr in
-                                        contourIndices.withUnsafeBufferPointer { indicesPtr in
-                                            centroids.withUnsafeBufferPointer { centroidPtr in
-                                                callback(
-                                                    Int32(nmsPredictions.count),
-                                                    indexPtr.baseAddress!,
-                                                    namesPtr.baseAddress!,
-                                                    Int32(namesData.count),
-                                                    scoresPtr.baseAddress!,
-                                                    boxesPtr.baseAddress!,
-                                                    pointsPtr.baseAddress!,
-                                                    Int32(contourPoints.count),
-                                                    indicesPtr.baseAddress!,
-                                                    Int32(contourIndices.count),
-                                                    centroidPtr.baseAddress!,
-                                                    timestamp
-                                                )
-                                            }
+                        scores.withUnsafeBufferPointer { scoresPtr in
+                            boxes.withUnsafeBufferPointer { boxesPtr in
+                                contourPoints.withUnsafeBufferPointer { pointsPtr in
+                                    contourIndices.withUnsafeBufferPointer { indicesPtr in
+                                        centroids.withUnsafeBufferPointer { centroidPtr in
+                                            callback(
+                                                Int32(nmsPredictions.count),
+                                                indexPtr.baseAddress!,
+                                                scoresPtr.baseAddress!,
+                                                boxesPtr.baseAddress!,
+                                                pointsPtr.baseAddress!,
+                                                Int32(contourPoints.count),
+                                                indicesPtr.baseAddress!,
+                                                Int32(contourIndices.count),
+                                                centroidPtr.baseAddress!,
+                                                timestamp
+                                            )
                                         }
                                     }
                                 }
