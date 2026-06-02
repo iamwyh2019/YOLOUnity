@@ -29,6 +29,9 @@
 		586F726C2D4515E10051DAF3 /* Exceptions for "YOLOUnity" folder in "YOLOUnity" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
+				"Models/ballar-yolo11m.mlpackage",
+				"Models/ballar-yolo11n.mlpackage",
+				"Models/ballar-yolo11s.mlpackage",
 				"Models/convert-coreml.py",
 				"Models/data-vistas.yaml",
 				"Models/vistas-l.pt",
