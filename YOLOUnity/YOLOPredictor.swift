@@ -41,20 +41,23 @@ class YOLOPredictor {
             switch modelName {
 //            case "yolo11x_seg":
 //                return try? yolo11x_seg(configuration: config).model
-            case "yolo11l_seg":
-                return try? yolo11l_seg(configuration: config).model
-            case "yolo11m_seg":
-                return try? yolo11m_seg(configuration: config).model
-            case "yolo11s_seg":
-                return try? yolo11s_seg(configuration: config).model
-            case "yolo11n_seg":
-                return try? yolo11n_seg(configuration: config).model
+//            case "yolo11l_seg":
+//                return try? yolo11l_seg(configuration: config).model
+//            case "yolo11m_seg":
+//                return try? yolo11m_seg(configuration: config).model
+//            case "yolo11s_seg":
+//                return try? yolo11s_seg(configuration: config).model
+//            case "yolo11n_seg":
+//                return try? yolo11n_seg(configuration: config).model
             case "vistas_l":
-                return try? vistas_l(configuration: config).model
+                NSLog("Info: 'vistas_l' is routed to the vistas_l_v2 model.")
+                return try? vistas_l_v2(configuration: config).model
             case "vistas_m":
-                return try? vistas_m(configuration: config).model
+                NSLog("Info: 'vistas_m' is routed to the vistas_m_v2 model.")
+                return try? vistas_m_v2(configuration: config).model
             case "vistas_s":
-                return try? vistas_s(configuration: config).model
+                NSLog("Info: 'vistas_s' is routed to the vistas_s_v2 model.")
+                return try? vistas_s_v2(configuration: config).model
 //            case "ballar_m":
 //                return try? ballar_yolo11m(configuration: config).model
 //            case "ballar_s":
