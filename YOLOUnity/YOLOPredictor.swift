@@ -4,7 +4,23 @@ import UIKit
 import Accelerate
 
 
+// Per-frame values the post-processing needs. Captured when the frame is submitted and carried
+// with that frame's results, so a later frame can never overwrite them mid-flight.
+struct FrameInfo {
+    let timestamp: UInt64
+    let originalWidth: Int
+    let originalHeight: Int
+    let scaleX: Float
+    let scaleY: Float
+}
+
 // YOLOPredictor Class
+//
+// Threading: the Vision request object is reused, so model runs (handler.perform) must never
+// overlap. In synchronous mode the caller runs them (Unity calls from its main thread); in
+// asynchronous mode they run on inferenceQueue. Post-processing always runs on the serial
+// postprocessQueue, so result callbacks never overlap and arrive in submission order — the
+// Unity side reuses its detection objects across callbacks and is not reentrant.
 class YOLOPredictor {
     let model: MLModel
     let detector: VNCoreMLModel
@@ -13,6 +29,22 @@ class YOLOPredictor {
     let modelWidth: Int
     let modelHeight: Int
     let classNames: [Int: String]
+
+    // When true, predict() returns right after submitting the frame and the model runs on
+    // inferenceQueue; a frame submitted while one is still running is dropped. When false,
+    // predict() blocks the caller for the model run (the original behavior).
+    var runsAsynchronously = false
+    private let inferenceQueue = DispatchQueue(label: "YOLOUnity.inference", qos: .userInitiated)
+    private let postprocessQueue = DispatchQueue(label: "YOLOUnity.postprocess", qos: .userInitiated)
+    private let busyLock = NSLock()
+    private var inferenceInFlight = false
+
+    // True while an asynchronous model run is in flight (post-processing excluded, so the
+    // next frame's inference can overlap the previous frame's post-processing).
+    var isBusy: Bool {
+        busyLock.lock(); defer { busyLock.unlock() }
+        return inferenceInFlight
+    }
     
     lazy var visionRequest: YOLORequest = {
         let request = YOLORequest(
@@ -113,43 +145,58 @@ class YOLOPredictor {
     
     
     func predict(cgImage: CGImage, timestamp: UInt64, scaleX: Float = 1.0, scaleY: Float = 1.0) {
-        visionRequest.userData["timestamp"] = timestamp
-        visionRequest.userData["originalWidth"] = cgImage.width
-        visionRequest.userData["originalHeight"] = cgImage.height
-        visionRequest.userData["scaleX"] = scaleX
-        visionRequest.userData["scaleY"] = scaleY
-        
-        let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
-        do {
-//            let startTime = CACurrentMediaTime()
-            try handler.perform([visionRequest])
-//            let endTime = CACurrentMediaTime()
-//            print("CGImage prediction used \(endTime - startTime) seconds (\(1.0 / (endTime - startTime)) FPS")
-        } catch {
-            NSLog("Prediction failed: \(error.localizedDescription)")
-        }
+        let info = FrameInfo(timestamp: timestamp, originalWidth: cgImage.width,
+                             originalHeight: cgImage.height, scaleX: scaleX, scaleY: scaleY)
+        submit(VNImageRequestHandler(cgImage: cgImage, options: [:]), info)
     }
     
+    // The pixel buffer must already be an independent copy of the caller's pixels (see
+    // bytesToCVPixelBuffer): in asynchronous mode it is read after this returns.
     func predict(cvPixelBuffer: CVPixelBuffer, timestamp: UInt64, scaleX: Float = 1.0, scaleY: Float = 1.0) {
-        visionRequest.userData["timestamp"] = timestamp
-        visionRequest.userData["originalWidth"] = CVPixelBufferGetWidth(cvPixelBuffer)
-        visionRequest.userData["originalHeight"] = CVPixelBufferGetHeight(cvPixelBuffer)
-        visionRequest.userData["scaleX"] = scaleX
-        visionRequest.userData["scaleY"] = scaleY
-        
-        let handler = VNImageRequestHandler(cvPixelBuffer: cvPixelBuffer, options: [:])
+        let info = FrameInfo(timestamp: timestamp, originalWidth: CVPixelBufferGetWidth(cvPixelBuffer),
+                             originalHeight: CVPixelBufferGetHeight(cvPixelBuffer), scaleX: scaleX, scaleY: scaleY)
+        submit(VNImageRequestHandler(cvPixelBuffer: cvPixelBuffer, options: [:]), info)
+    }
+
+    private func submit(_ handler: VNImageRequestHandler, _ info: FrameInfo) {
+        guard runsAsynchronously else {
+            runModel(handler, info)
+            return
+        }
+        busyLock.lock()
+        if inferenceInFlight {
+            busyLock.unlock()
+            return  // drop: the model is still on the previous frame
+        }
+        inferenceInFlight = true
+        busyLock.unlock()
+
+        inferenceQueue.async {
+            defer {
+                self.busyLock.lock()
+                self.inferenceInFlight = false
+                self.busyLock.unlock()
+            }
+            self.runModel(handler, info)
+        }
+    }
+
+    // Runs the model; Vision calls processObservations synchronously before perform returns.
+    private func runModel(_ handler: VNImageRequestHandler, _ info: FrameInfo) {
+        visionRequest.frameInfo = info
         do {
-//            let startTime = CACurrentMediaTime()
             try handler.perform([visionRequest])
-//            let endTime = CACurrentMediaTime()
-//            print("CVPixelBuffer prediction used \(endTime - startTime) seconds (\(1.0 / (endTime - startTime)) FPS")
         } catch {
             NSLog("Prediction failed: \(error.localizedDescription)")
         }
     }
     
     func processObservations(for request: VNRequest, error: Error?) {
-        DispatchQueue.global(qos: .userInitiated).async {
+        // Still inside handler.perform: snapshot the results and this frame's info now, since
+        // the next run reuses the same request object.
+        let observations = request.results
+        let frameInfo = (request as? YOLORequest)?.frameInfo
+        postprocessQueue.async {
             autoreleasepool {
                 //            let startTime = CACurrentMediaTime()
                 if let error = error {
@@ -158,9 +205,9 @@ class YOLOPredictor {
                 }
                 
                 // Access results
-                guard let results = request.results as? [VNCoreMLFeatureValueObservation],
+                guard let results = observations as? [VNCoreMLFeatureValueObservation],
                       results.count >= 2 else {
-                    NSLog("Error: Insufficient results. Found \(request.results?.count ?? 0) results.")
+                    NSLog("Error: Insufficient results. Found \(observations?.count ?? 0) results.")
                     return
                 }
                 
@@ -184,16 +231,12 @@ class YOLOPredictor {
                     return (array0, array1) // Default case, may not work correctly
                 }()
                 
-                guard let yoloRequest = request as? YOLORequest,
-                      let originalWidth = yoloRequest.userData["originalWidth"] as? Int,
-                      let originalHeight = yoloRequest.userData["originalHeight"] as? Int,
-                      let timestamp = yoloRequest.userData["timestamp"] as? UInt64,
-                      let scaleX = yoloRequest.userData["scaleX"] as? Float,
-                      let scaleY = yoloRequest.userData["scaleY"] as? Float
-                else {
+                guard let info = frameInfo else {
                     NSLog("Missing image properties")
                     return
                 }
+                let originalWidth = info.originalWidth, originalHeight = info.originalHeight
+                let timestamp = info.timestamp, scaleX = info.scaleX, scaleY = info.scaleY
                 
                 let coordinateRestorer = getCoordinateRestorer(
                     originalSize: (Float(originalWidth), Float(originalHeight)),
@@ -401,5 +444,6 @@ class ThresholdProvider: MLFeatureProvider {
 
 
 class YOLORequest: VNCoreMLRequest {
-    var userData: [String: Any] = [:]
+    // Set before each run; read synchronously in the completion handler.
+    var frameInfo: FrameInfo?
 }
