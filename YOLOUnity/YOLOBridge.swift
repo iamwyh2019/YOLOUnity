@@ -67,19 +67,13 @@ public func InitializeYOLO(
 
 // Opt into asynchronous inference. Off (the default), RunYOLO/RunYOLO_Byte block the caller
 // for the whole model run, as before. On, they copy the image and return immediately; the
-// model runs on a background queue, and a frame submitted while the model is still busy is
-// dropped (no callback for it). Use IsYOLOBusy to skip preparing frames that would be
-// dropped. Set it once at startup, before the first RunYOLO*.
+// model runs on a background queue, back to back. A frame submitted while the model is
+// running waits for it, replacing any older waiting frame (that one gets no callback), so
+// submit every camera frame. Set it once at startup, before the first RunYOLO*.
 @_cdecl("SetYOLOAsync")
 public func SetYOLOAsync(enabled: Bool) {
     asyncInference = enabled
     predictor?.runsAsynchronously = enabled
-}
-
-// True while an asynchronous model run is in flight. Always false in synchronous mode.
-@_cdecl("IsYOLOBusy")
-public func IsYOLOBusy() -> Bool {
-    return predictor?.isBusy ?? false
 }
 
 // Returns a pointer to a null-separated UTF-8 buffer of class names, indexed by

@@ -18,9 +18,9 @@ struct FrameInfo {
 //
 // Threading: the Vision request object is reused, so model runs (handler.perform) must never
 // overlap. In synchronous mode the caller runs them (Unity calls from its main thread); in
-// asynchronous mode they run on inferenceQueue. Post-processing always runs on the serial
-// postprocessQueue, so result callbacks never overlap and arrive in submission order — the
-// Unity side reuses its detection objects across callbacks and is not reentrant.
+// asynchronous mode they run back to back on inferenceQueue. Post-processing always runs on the
+// serial postprocessQueue, so result callbacks never overlap and arrive in submission order —
+// the Unity side reuses its detection objects across callbacks and is not reentrant.
 class YOLOPredictor {
     let model: MLModel
     let detector: VNCoreMLModel
@@ -31,20 +31,18 @@ class YOLOPredictor {
     let classNames: [Int: String]
 
     // When true, predict() returns right after submitting the frame and the model runs on
-    // inferenceQueue; a frame submitted while one is still running is dropped. When false,
-    // predict() blocks the caller for the model run (the original behavior).
+    // inferenceQueue. A frame submitted while the model is running waits in a one-frame slot,
+    // replacing any older waiting frame (latest wins, the others get no callback), and runs as
+    // soon as the current run finishes — so the model never idles waiting for the next camera
+    // frame, and what it runs is never more than one frame old. When false, predict() blocks
+    // the caller for the model run (the original behavior).
     var runsAsynchronously = false
     private let inferenceQueue = DispatchQueue(label: "YOLOUnity.inference", qos: .userInitiated)
     private let postprocessQueue = DispatchQueue(label: "YOLOUnity.postprocess", qos: .userInitiated)
-    private let busyLock = NSLock()
-    private var inferenceInFlight = false
-
-    // True while an asynchronous model run is in flight (post-processing excluded, so the
-    // next frame's inference can overlap the previous frame's post-processing).
-    var isBusy: Bool {
-        busyLock.lock(); defer { busyLock.unlock() }
-        return inferenceInFlight
-    }
+    private typealias PendingFrame = (handler: VNImageRequestHandler, info: FrameInfo)
+    private let frameLock = NSLock()  // guards modelRunning and waitingFrame
+    private var modelRunning = false
+    private var waitingFrame: PendingFrame? = nil
     
     lazy var visionRequest: YOLORequest = {
         let request = YOLORequest(
@@ -163,21 +161,28 @@ class YOLOPredictor {
             runModel(handler, info)
             return
         }
-        busyLock.lock()
-        if inferenceInFlight {
-            busyLock.unlock()
-            return  // drop: the model is still on the previous frame
+        frameLock.lock()
+        if modelRunning {
+            waitingFrame = (handler, info)  // latest wins
+            frameLock.unlock()
+            return
         }
-        inferenceInFlight = true
-        busyLock.unlock()
+        modelRunning = true
+        frameLock.unlock()
 
-        inferenceQueue.async {
-            defer {
-                self.busyLock.lock()
-                self.inferenceInFlight = false
-                self.busyLock.unlock()
-            }
-            self.runModel(handler, info)
+        inferenceQueue.async { self.runFrames(startingWith: (handler, info)) }
+    }
+
+    // Runs frames back to back on inferenceQueue until no frame is waiting.
+    private func runFrames(startingWith first: PendingFrame) {
+        var next: PendingFrame? = first
+        while let frame = next {
+            runModel(frame.handler, frame.info)
+            frameLock.lock()
+            next = waitingFrame
+            waitingFrame = nil
+            if next == nil { modelRunning = false }
+            frameLock.unlock()
         }
     }
 
