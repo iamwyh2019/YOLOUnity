@@ -81,7 +81,7 @@ and `Bool` is 1 byte, so declare them as `long` and `[MarshalAs(UnmanagedType.I1
 | `const uint8_t* GetClassNames(int32_t* outCount, int32_t* outByteLength)` | The model's class names, null-separated UTF-8, indexed by class index. Owned by the framework; valid until the next `InitializeYOLO`. |
 | `void SetYOLOAsync(bool enabled)` | Off by default. See [Asynchronous mode](#asynchronous-mode). |
 | `void RunYOLO_Byte(const uint8_t* bgra, long width, long height, uint64_t timestamp, float scaleX, float scaleY)` | Runs the model on an 8-bit BGRA image whose rows are bottom-up (as read back from a Unity texture). The pixels are copied before the call returns. |
-| `void RunYOLO(const float* rgba, long width, long height, uint64_t timestamp, float scaleX, float scaleY)` | Same, for a float RGBA image with values in 0–1. |
+| `void GetYOLOTimings(float* inferenceMs, float* postprocessMs)` | Call from inside the callback: how long the delivered frame's model run took (including Vision's resize to the model input) and how long its post-processing took. |
 
 `timestamp` is echoed back in the callback so you can match results to frames (`0` means "now", in
 milliseconds since 1970). `scaleX` and `scaleY` multiply every returned coordinate, which lets you
@@ -111,14 +111,14 @@ a background queue, one call at a time and in submission order.
 
 ### Asynchronous mode
 
-By default, `RunYOLO*` blocks the calling thread for the whole model run (tens of milliseconds for
+By default, `RunYOLO_Byte` blocks the calling thread for the whole model run (tens of milliseconds for
 the larger models). With `SetYOLOAsync(true)`:
 
-- `RunYOLO*` copies the image and returns immediately; the model runs on a private serial queue.
+- `RunYOLO_Byte` copies the image and returns immediately; the model runs on a private serial queue.
 - A frame submitted while the model is busy waits for it, replacing any older waiting frame. The
   model always picks up the newest frame next, and replaced frames never produce a callback.
 - Post-processing runs on its own serial queue, so the next model run overlaps the previous frame's
   post-processing.
 
 Submit every camera frame: throughput stays at one result per model run, and the frame waiting for
-the model is never more than one camera frame old. Set the mode once, before the first `RunYOLO*`.
+the model is never more than one camera frame old. Set the mode once, before the first `RunYOLO_Byte`.

@@ -1,61 +1,34 @@
 import CoreML
 
-// Extension for using sequence operations with memory safety
 extension Collection {
+    // map, split across cores in contiguous chunks. Small collections run serially.
     func concurrentMap<T>(_ transform: (Element) -> T) -> [T] {
-        let n = count
-        if n == 0 {
-            return []
-        }
-        
-        // For small collections, don't parallelize
-        if n < 32 {
-            return map(transform)
-        }
-        
-        // Use a specific number of threads based on system
-        let threadCount = Swift.min(ProcessInfo.processInfo.activeProcessorCount, n)
-        let jobsPerThread = Swift.max(1, n / threadCount)
-        
-        var result = [T?](repeating: nil, count: n)
-        DispatchQueue.concurrentPerform(iterations: threadCount) { thread in
-            let start = thread * jobsPerThread
-            let end = (thread == threadCount - 1) ? n : start + jobsPerThread
-            for i in start..<end {
-                let index = self.index(self.startIndex, offsetBy: i)
-                result[i] = transform(self[index])
-            }
-        }
-        
-        return result.compactMap { $0 }
+        concurrentEnumeratedMap { transform($1) }
     }
-    
+
     func concurrentEnumeratedMap<T>(_ transform: (Int, Element) -> T) -> [T] {
         let n = count
-        if n == 0 {
-            return []
-        }
-        
-        // For small collections, don't parallelize
         if n < 32 {
             return enumerated().map { transform($0.offset, $0.element) }
         }
-        
-        // Use a specific number of threads based on system
+
+        let elements = Array(self)
         let threadCount = Swift.min(ProcessInfo.processInfo.activeProcessorCount, n)
-        let jobsPerThread = Swift.max(1, n / threadCount)
-        
-        var result = [T?](repeating: nil, count: n)
-        DispatchQueue.concurrentPerform(iterations: threadCount) { thread in
-            let start = thread * jobsPerThread
-            let end = (thread == threadCount - 1) ? n : start + jobsPerThread
-            for i in start..<end {
-                let index = self.index(self.startIndex, offsetBy: i)
-                result[i] = transform(i, self[index])
+        let jobsPerThread = n / threadCount
+
+        // Each thread initializes only its own slots, through a raw pointer: writing to a shared
+        // Swift array from several threads at once is a data race.
+        return [T](unsafeUninitializedCapacity: n) { buffer, initializedCount in
+            let base = buffer.baseAddress!
+            DispatchQueue.concurrentPerform(iterations: threadCount) { thread in
+                let start = thread * jobsPerThread
+                let end = (thread == threadCount - 1) ? n : start + jobsPerThread
+                for i in start..<end {
+                    (base + i).initialize(to: transform(i, elements[i]))
+                }
             }
+            initializedCount = n
         }
-        
-        return result.compactMap { $0 }
     }
 }
 
