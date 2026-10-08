@@ -1,13 +1,13 @@
 # ``YOLOUnity``
 
-<!--@START_MENU_TOKEN@-->Summary<!--@END_MENU_TOKEN@-->
+Runs YOLO instance-segmentation models with Core ML and returns detections through a C API.
 
 ## Overview
 
-<!--@START_MENU_TOKEN@-->Text<!--@END_MENU_TOKEN@-->
+YOLOUnity loads a Core ML YOLO segmentation model, runs it through Vision on the CPU and Neural
+Engine, and post-processes the output on device: confidence filtering, per-class non-maximum
+suppression, mask assembly, and contour extraction with OpenCV. Results (class, score, box,
+contour polygons, centroid) are delivered to a registered C callback, which makes the framework
+easy to call from Unity or another native host.
 
-## Topics
-
-### <!--@START_MENU_TOKEN@-->Group<!--@END_MENU_TOKEN@-->
-
-- <!--@START_MENU_TOKEN@-->``Symbol``<!--@END_MENU_TOKEN@-->
+The C API is defined in `YOLOBridge.swift` and documented in the repository's README.
