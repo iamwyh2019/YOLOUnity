@@ -50,8 +50,8 @@ InitializeYOLO(modelName: "my_model", confidenceThreshold: 0.5, iouThreshold: 0.
 ```
 
 Only models that are members of the target end up in the built framework. The current switch maps
-`vistas_s`, `vistas_m`, and `vistas_l` to the v2 Vistas models; the YOLO11 COCO and BallAR cases
-are commented out and their packages excluded from the target.
+`vistas_s`, `vistas_m`, and `vistas_l` to the v2 Vistas models; the YOLO11 COCO cases are
+commented out and their packages excluded from the target.
 
 `YOLOUnity/Models/convert-coreml.py` exports an Ultralytics `.pt` model to Core ML
 (`python convert-coreml.py model.pt --precision int8|fp16`).

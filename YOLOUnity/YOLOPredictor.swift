@@ -88,12 +88,6 @@ class YOLOPredictor {
             case "vistas_s":
                 NSLog("Info: 'vistas_s' is routed to the vistas_s_v2 model.")
                 return try? vistas_s_v2(configuration: config).model
-//            case "ballar_m":
-//                return try? ballar_yolo11m(configuration: config).model
-//            case "ballar_s":
-//                return try? ballar_yolo11s(configuration: config).model
-//            case "ballar_n":
-//                return try? ballar_yolo11n(configuration: config).model
             default:
                 NSLog("Error: Unknown model name '\(modelName)'.")
                 return nil
