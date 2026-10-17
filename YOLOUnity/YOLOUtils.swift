@@ -127,36 +127,6 @@ func nonMaximumSuppression(
 }
 
 
-func getMaskProtos(masks: MLMultiArray, numMasks: Int) -> [[Float]] {
-    let width = masks.shape[2].intValue
-    let height = masks.shape[3].intValue
-    let maskSize = height * width
-    
-    let pointer = masks.dataPointer.assumingMemoryBound(to: Float.self)
-    let maskStride = masks.strides[1].intValue
-    
-    return (0..<numMasks).concurrentMap { maskIdx -> [Float] in
-        let start = pointer.advanced(by: maskIdx * maskStride)
-        return Array(UnsafeBufferPointer(start: start, count: maskSize))
-    }
-}
-
-
-func getMasksFromProtos(maskProtos: [[Float]], coefficients: [Float]) -> [Float] {
-    guard !maskProtos.isEmpty, maskProtos.count == coefficients.count else { return [] }
-    
-    let maskSize = maskProtos[0].count
-    var result = [Float](repeating: 0, count: maskSize)
-    
-    for (proto, coefficient) in zip(maskProtos, coefficients) {
-        // Multiply proto by the scalar coefficient and add the result to 'result'
-        vDSP_vsma(proto, 1, [coefficient], result, 1, &result, 1, vDSP_Length(maskSize))
-    }
-    
-    return result
-}
-
-
 func getSigmoidMask(mask: UnsafePointer<Float>, maskSize: Int) -> [Float] {
     var count = Int32(maskSize)
     var onef: Float = 1.0
@@ -175,26 +145,6 @@ func getSigmoidMask(mask: UnsafePointer<Float>, maskSize: Int) -> [Float] {
     vvrecf(&sigmoidMask, &expNegatedMask, &count)
     
     return sigmoidMask
-}
-
-
-func cropMask(mask: [Float], width: Int, height: Int, bbox: XYXY) -> [Float] {
-    var result = [Float](repeating: 0, count: width * height)
-    let x1 = max(0, Int(bbox.x1))
-    let y1 = max(0, Int(bbox.y1))
-    let x2 = min(width - 1, Int(bbox.x2))
-    let y2 = min(height - 1, Int(bbox.y2))
-    let rowWidth = x2 - x1 + 1
-
-    DispatchQueue.concurrentPerform(iterations: y2 - y1 + 1) { i in
-       let y = y1 + i
-       let offset = y * width + x1
-       mask.withUnsafeBufferPointer { ptr in
-           vDSP_vsmul(ptr.baseAddress! + offset, 1, [1.0], &result[offset], 1, vDSP_Length(rowWidth))
-       }
-    }
-
-    return result
 }
 
 
@@ -273,10 +223,6 @@ func removeBelowThreshold(mask: [Float], threshold: Float = 0.5) -> [Float] {
 }
 
 
-
-func sigmoid(value: Float) -> Float {
-    return 1.0 / (1.0 + exp(-value))
-}
 
 func IOU(box1: XYXY, box2: XYXY) -> Float {
     let xA = max(box1.x1, box2.x1)

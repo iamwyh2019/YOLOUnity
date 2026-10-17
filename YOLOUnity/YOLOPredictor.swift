@@ -29,6 +29,7 @@ class YOLOPredictor {
     let modelWidth: Int
     let modelHeight: Int
     let classNames: [Int: String]
+    let cropAndScale: VNImageCropAndScaleOption
 
     // When true, predict() returns right after submitting the frame and the model runs on
     // inferenceQueue. A frame submitted while the model is running waits in a one-frame slot,
@@ -44,15 +45,15 @@ class YOLOPredictor {
     private var modelRunning = false
     private var waitingFrame: PendingFrame? = nil
     
-    lazy var visionRequest: YOLORequest = {
+    // Lazy only because its completion handler captures self; init creates it, on the caller's
+    // thread, before any frame can run.
+    private(set) lazy var visionRequest: YOLORequest = {
         let request = YOLORequest(
-          model: detector,
-          completionHandler: {
-            [weak self] request, error in
-            self?.processObservations(for: request, error: error)
-          })
-        // NOTE: BoundingBoxView object scaling depends on request.imageCropAndScaleOption https://developer.apple.com/documentation/vision/vnimagecropandscaleoption
-        request.imageCropAndScaleOption = .scaleFill  // .scaleFit, .scaleFill, .centerCrop
+            model: detector,
+            completionHandler: { [weak self] request, error in
+                self?.processObservations(for: request, error: error)
+            })
+        request.imageCropAndScaleOption = cropAndScale
         return request
     }()
 
@@ -109,38 +110,24 @@ class YOLOPredictor {
         
         (self.modelWidth, self.modelHeight, self.classNames) = parseModelSizeAndNames(model: model)
         
-        let request = YOLORequest(
-            model: detector,
-            completionHandler: { [weak self] request, error in
-                self?.processObservations(for: request, error: error)
-        })
-        
-//        request.imageCropAndScaleOption = .scaleFill  // .scaleFit, .scaleFill, .centerCrop
         switch scaleMethod {
         case "scaleFit":
-            request.imageCropAndScaleOption = VNImageCropAndScaleOption.scaleFit
+            cropAndScale = .scaleFit
         case "scaleFill":
-            request.imageCropAndScaleOption = VNImageCropAndScaleOption.scaleFill
+            cropAndScale = .scaleFill
         case "centerCrop":
-            request.imageCropAndScaleOption = VNImageCropAndScaleOption.centerCrop
+            cropAndScale = .centerCrop
         default:
             NSLog("Cannot parse scaleMethod: \(scaleMethod), defaulting to scaleFit")
-            request.imageCropAndScaleOption = VNImageCropAndScaleOption.scaleFit
+            cropAndScale = .scaleFit
         }
-        
-        visionRequest = request
+        _ = visionRequest
         
         NSLog("OpenCV version: \(OpenCVWrapper.opencvVersion())")
         
         NSLog("Initialized model \(modelName) with scaleMethod=\(scaleMethod), score threshold=\(confidenceThreshold), iou threshold=\(iouThreshold), Model width=\(modelWidth), height=\(modelHeight), numClasses=\(classNames.count)")
     }
     
-    
-    func predict(cgImage: CGImage, timestamp: UInt64, scaleX: Float = 1.0, scaleY: Float = 1.0) {
-        let info = FrameInfo(timestamp: timestamp, originalWidth: cgImage.width,
-                             originalHeight: cgImage.height, scaleX: scaleX, scaleY: scaleY)
-        submit(VNImageRequestHandler(cgImage: cgImage, options: [:]), info)
-    }
     
     // The pixel buffer must already be an independent copy of the caller's pixels (see
     // bytesToCVPixelBuffer): in asynchronous mode it is read after this returns.
@@ -183,6 +170,7 @@ class YOLOPredictor {
     // Runs the model; Vision calls processObservations synchronously before perform returns.
     private func runModel(_ handler: VNImageRequestHandler, _ info: FrameInfo) {
         visionRequest.frameInfo = info
+        visionRequest.runStart = CACurrentMediaTime()
         do {
             try handler.perform([visionRequest])
         } catch {
@@ -195,9 +183,11 @@ class YOLOPredictor {
         // the next run reuses the same request object.
         let observations = request.results
         let frameInfo = (request as? YOLORequest)?.frameInfo
+        let runStart = (request as? YOLORequest)?.runStart ?? 0
+        let inferenceMs = Float((CACurrentMediaTime() - runStart) * 1000)
         postprocessQueue.async {
             autoreleasepool {
-                //            let startTime = CACurrentMediaTime()
+                let postprocessStart = CACurrentMediaTime()
                 if let error = error {
                     NSLog("Error in processing observations: \(error.localizedDescription)")
                     return
@@ -240,10 +230,8 @@ class YOLOPredictor {
                 let coordinateRestorer = getCoordinateRestorer(
                     originalSize: (Float(originalWidth), Float(originalHeight)),
                     targetSize: (Float(self.modelWidth), Float(self.modelHeight)),
-                    option: self.visionRequest.imageCropAndScaleOption
+                    option: self.cropAndScale
                 )
-                
-                //            NSLog("Original size: \(originalWidth)x\(originalHeight)")
                 
                 let numMasks = masks.shape[1].intValue
                 let numClasses = boxes.shape[1].intValue - 4 - numMasks
@@ -305,21 +293,10 @@ class YOLOPredictor {
                 let sigmoidAllMasks = getSigmoidMask(mask: allMasks.withUnsafeBufferPointer { $0.baseAddress! },
                                                      maskSize: numPredictions * maskSize)
                 
-                //            let maskProtos: [[Float]] = getMaskProtos(masks: masks, numMasks: numMasks)
-                
-                //            var i = 0
-                //            print("Got \(nmsPredictions.count) predictions")
-                
                 let contourList: [OpenCVWrapper.ContoursResult] = nmsPredictions.concurrentEnumeratedMap { (i, box) in
-                    //                let mask = getMasksFromProtos(
-                    //                    maskProtos: maskProtos,
-                    //                    coefficients: box.maskCoefficients
-                    //                )
                     let sigmoidMask = sigmoidAllMasks.withUnsafeBufferPointer { ptr in
                         ptr.baseAddress!.advanced(by: i * maskSize)
                     }
-                    
-                    //                let sigmoidMask = getSigmoidMask(mask: mask, maskSize: maskSize)
                     
                     let upsampledMask = upsampleMask(
                         mask: sigmoidMask,
@@ -330,7 +307,6 @@ class YOLOPredictor {
                     )
                     
                     let (croppedMask, (boxWidth, boxHeight)) = cropMaskPhysical(
-                        //                let croppedMask = cropMask(
                         mask: upsampledMask,
                         width: self.modelWidth,
                         height: self.modelHeight,
@@ -343,9 +319,6 @@ class YOLOPredictor {
                     
                     return contours
                 }
-                
-                //            let endTime = CACurrentMediaTime()
-                //            print("Processing used \(endTime - startTime) seconds (\(1.0 / (endTime - startTime)) FPS")
                 
                 if let callback = yoloCallback {
                     let indexData = nmsPredictions.map { Int32($0.classIndex) }
@@ -382,6 +355,8 @@ class YOLOPredictor {
                         ]
                     }
                     
+                    lastInferenceMs = inferenceMs
+                    lastPostprocessMs = Float((CACurrentMediaTime() - postprocessStart) * 1000)
                     indexData.withUnsafeBufferPointer { indexPtr in
                         scores.withUnsafeBufferPointer { scoresPtr in
                             boxes.withUnsafeBufferPointer { boxesPtr in
@@ -445,4 +420,5 @@ class ThresholdProvider: MLFeatureProvider {
 class YOLORequest: VNCoreMLRequest {
     // Set before each run; read synchronously in the completion handler.
     var frameInfo: FrameInfo?
+    var runStart: CFTimeInterval = 0
 }

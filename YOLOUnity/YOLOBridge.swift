@@ -21,6 +21,10 @@ var yoloCallback: YOLOCallback? = nil
 // Applied to the predictor on InitializeYOLO and by SetYOLOAsync, so the order of the two
 // calls doesn't matter.
 private var asyncInference = false
+// Timings of the frame being delivered, set on the post-processing queue right before its
+// callback; read them through GetYOLOTimings from inside the callback.
+var lastInferenceMs: Float = 0
+var lastPostprocessMs: Float = 0
 
 // Cached null-separated UTF-8 buffer of class names, indexed by classIndex.
 // Allocated lazily on first GetClassNames call; freed and rebuilt when a new
@@ -76,6 +80,17 @@ public func SetYOLOAsync(enabled: Bool) {
     predictor?.runsAsynchronously = enabled
 }
 
+// Call from inside the results callback: how long the delivered frame's model run took (including
+// Vision's resize to the model input) and how long its post-processing took up to the callback.
+@_cdecl("GetYOLOTimings")
+public func GetYOLOTimings(
+    inferenceMs: UnsafeMutablePointer<Float>,
+    postprocessMs: UnsafeMutablePointer<Float>
+) {
+    inferenceMs.pointee = lastInferenceMs
+    postprocessMs.pointee = lastPostprocessMs
+}
+
 // Returns a pointer to a null-separated UTF-8 buffer of class names, indexed by
 // classIndex (0..count-1). The buffer is owned by the plugin and remains valid
 // until the next InitializeYOLO call. Missing/sparse class indices are encoded
@@ -113,33 +128,6 @@ public func GetClassNames(
     return UnsafePointer(cachedClassNamesPtr!)
 }
 
-
-@_cdecl("RunYOLO")
-public func RunYOLO(
-    imageData: UnsafePointer<Float>,
-    width: Int,
-    height: Int,
-    timestamp: UInt64 = 0,
-    scaleX: Float = 1.0,
-    scaleY: Float = 1.0
-) {
-    guard let predictor = predictor else {
-        NSLog("Error: YOLOPredictor not initialized.")
-        return
-    }
-    
-    guard let cvPixelBuffer = floatArrayToCVPixelBuffer(data: imageData, width: width, height: height) else {
-        NSLog("Error: Failed to convert image data.")
-        return
-    }
-    
-    predictor.predict(
-        cvPixelBuffer: cvPixelBuffer,
-        timestamp: timestamp == 0 ? getCurrentTimestamp() : timestamp,
-        scaleX: scaleX,
-        scaleY: scaleY
-    )
-}
 
 @_cdecl("RunYOLO_Byte")
 public func RunYOLO_Byte(
