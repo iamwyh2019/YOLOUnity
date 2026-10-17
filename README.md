@@ -4,7 +4,7 @@ An iOS framework that runs YOLO instance-segmentation models with Core ML and re
 (class, score, box, contour polygons, centroid) through a plain C API, so it can be called from
 Unity (`[DllImport("__Internal")]`) or any other native host.
 
-It is the inference engine behind [NavSight](https://github.com/MadisonAbilityLab/NavSight), which
+It is the inference engine behind [NavSight](https://github.com/MadisonAbilityLab/NavSight-in-the-Wild), which
 ships the Mapillary Vistas street-scene models (`vistas-{s,m,l}-v2`).
 
 - Core ML through Vision, on the CPU and Neural Engine (the GPU is left free for rendering)
