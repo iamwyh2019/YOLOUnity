@@ -122,3 +122,12 @@ the larger models). With `SetYOLOAsync(true)`:
 
 Submit every camera frame: throughput stays at one result per model run, and the frame waiting for
 the model is never more than one camera frame old. Set the mode once, before the first `RunYOLO*`.
+
+## License
+
+The YOLOUnity code is licensed under the [MIT License](LICENSE).
+
+The model files in `YOLOUnity/Models` are not covered by the MIT License. The Mapillary Vistas
+models (`vistas-*`) are licensed under [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/)
+and may be used for non-commercial purposes only. The `yolo11*-seg` models are Ultralytics' pretrained
+COCO models, distributed under Ultralytics' [AGPL-3.0 License](https://ultralytics.com/license).
